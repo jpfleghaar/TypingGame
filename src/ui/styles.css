@@ -56,22 +56,22 @@ kbd { font-family: var(--mono); background: var(--panel-2); border: 1px solid va
 .empty { color: var(--muted); margin: 0 0 0.8rem; }
 
 /* ---------- Spiel ---------- */
-#game { display: grid; grid-template-columns: minmax(140px, 210px) minmax(420px, 660px) minmax(140px, 210px); justify-content: center; align-items: center; gap: 2rem; padding: 1.25rem; }
-.opponents { display: grid; grid-auto-rows: min-content; gap: 0.5rem; align-content: center; }
+#game { display: grid; grid-template-columns: minmax(180px, 300px) minmax(420px, 660px) minmax(180px, 300px); justify-content: center; align-items: center; gap: clamp(1rem, 2.5vw, 2.5rem); padding: 1.25rem; }
+.opponents { display: grid; grid-auto-rows: min-content; gap: 0.6rem; align-content: center; }
 .opp {
   position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-  padding: 0.35rem 0.55rem; display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.5rem; font-size: 0.82rem;
+  padding: 0.55rem 0.8rem; display: grid; grid-template-columns: 1fr auto; gap: 0.4rem 0.6rem; font-size: clamp(0.95rem, 1.1vw, 1.15rem);
   min-height: 0;
 }
 .opp .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.opp .badges { color: var(--warn); font-variant-numeric: tabular-nums; }
-.opp .bar { grid-column: 1 / -1; height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; }
+.opp .badges { color: var(--warn); font-weight: 700; font-variant-numeric: tabular-nums; }
+.opp .bar { grid-column: 1 / -1; height: 12px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
 .opp .bar i { display: block; height: 100%; width: 0; background: var(--good); transition: width 120ms linear; }
 .opp.hot .bar i { background: var(--warn); }
 .opp.critical .bar i { background: var(--danger); }
-.opp.targeted { border-color: var(--good); box-shadow: 0 0 0 1px var(--good) inset; }
-.opp.attacker::after { content: ''; position: absolute; top: 6px; right: -5px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
-.opponents.left .opp.attacker::after { right: auto; left: -5px; }
+.opp.targeted { border-color: var(--good); box-shadow: 0 0 0 2px var(--good) inset; }
+.opp.attacker::after { content: ''; position: absolute; top: 50%; margin-top: -7px; right: -7px; width: 14px; height: 14px; border-radius: 50%; background: var(--danger); }
+.opponents.left .opp.attacker::after { right: auto; left: -7px; }
 .opp.ko { opacity: 0.35; }
 .opp.ko .name { text-decoration: line-through; }
 .opp .ko-label { color: var(--danger); font-weight: 700; }
