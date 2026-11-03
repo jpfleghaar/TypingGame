@@ -75,6 +75,8 @@ export class FxLayer {
   private last = 0;
   private running = false;
   private enabled = true;
+  /** Wenn ein anderes Theme aktiv ist, zeichnet diese Ebene gar nichts. */
+  private suspended = false;
 
   /** Geglättete Werte, damit nichts springt. */
   private speed = 0;
@@ -105,8 +107,21 @@ export class FxLayer {
       this.ctx.clearRect(0, 0, this.w, this.h);
       this.fg.clearRect(0, 0, this.w, this.h);
       // Ohne Bewegung: nur ein statischer Combo-Rand
-      this.drawGlow(this.targetGlow, 0);
+      if (!this.suspended) this.drawGlow(this.targetGlow, 0);
     }
+  }
+
+  setSuspended(on: boolean): void {
+    this.suspended = on;
+    if (on) this.stop();
+  }
+
+  /** Leert beide Ebenen (z. B. beim Wechsel auf ein anderes Theme). */
+  clear(): void {
+    this.trails = [];
+    this.sparks = [];
+    this.ctx.clearRect(0, 0, this.w, this.h);
+    this.fg.clearRect(0, 0, this.w, this.h);
   }
 
   /** Textzone, die die Vordergrund-Ebene aussparen muss (null = keine). */
@@ -121,7 +136,7 @@ export class FxLayer {
   setIntensity(wpm: number, combo: number): void {
     this.targetWpm = wpm;
     const g = comboGlow(combo);
-    if (!this.enabled && g !== this.targetGlow) {
+    if (!this.enabled && !this.suspended && g !== this.targetGlow) {
       this.targetGlow = g;
       this.ctx.clearRect(0, 0, this.w, this.h);
       this.drawGlow(g, 0);
@@ -167,7 +182,7 @@ export class FxLayer {
   }
 
   start(): void {
-    if (this.running || !this.enabled) return;
+    if (this.running || !this.enabled || this.suspended) return;
     this.running = true;
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);
@@ -193,7 +208,7 @@ export class FxLayer {
     const want = Math.round((this.w * this.h) / 9000);
     while (this.particles.length < want) this.particles.push(this.newParticle(true));
     this.particles.length = Math.min(this.particles.length, want);
-    if (!this.enabled) this.drawGlow(this.targetGlow, 0);
+    if (!this.enabled && !this.suspended) this.drawGlow(this.targetGlow, 0);
   }
 
   private newParticle(anywhere: boolean): Particle {

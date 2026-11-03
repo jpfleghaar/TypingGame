@@ -70,6 +70,8 @@ export interface PlayerState {
   koTick: number;
   koBy: PlayerId | null;
   placement: number;
+  /** Position in der gemeinsamen Wortfolge (nächstes Wort für diesen Spieler). */
+  seqIndex: number;
   /** Privater Zufall für Müllwörter. */
   garbageRng: RngState;
   recentGarbage: string[];
@@ -86,6 +88,8 @@ export interface GameState {
   /** Zufall für die gemeinsame Wortfolge. */
   wordRng: RngState;
   recentWords: string[];
+  /** Gemeinsame Wortfolge. Jeder Spieler liest sie in eigenem Tempo (PlayerState.seqIndex). */
+  sequence: string[];
   spawnCount: number;
   nextSpawnTick: number;
   nextWordId: number;

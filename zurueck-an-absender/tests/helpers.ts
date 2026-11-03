@@ -18,6 +18,8 @@ export function quietCfg(mod?: (c: GameConfig) => void): GameConfig {
   c.drift.enabled = false;
   c.island.enabled = false;
   c.seaEvents.enabled = false;
+  // Tests rechnen mit runden Zahlen, unabhängig vom aktuellen Balancing
+  c.ship.capacity = 120;
   mod?.(c);
   return c;
 }

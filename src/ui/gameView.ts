@@ -10,6 +10,13 @@ interface Geometry {
   cards: Map<number, DOMRect>;
 }
 
+export interface ViewOptions {
+  /** 'center': Gegner links und rechts; 'split': Wörter links, alle Gegner rechts. */
+  layout?: 'center' | 'split';
+  /** SVG-Pfeile für Ziel/Angreifer (das Datennetz zeichnet eigene Linien). */
+  svgLinks?: boolean;
+}
+
 interface OppCard {
   root: HTMLElement;
   bar: HTMLElement;
@@ -56,15 +63,20 @@ export class GameView {
     private readonly humanId: number,
     state: GameState,
     themeLabel: string,
+    /** Lernmodus: Übersetzungen, die klein neben den Wörtern stehen. */
+    private readonly translations?: Readonly<Record<string, string>>,
+    private readonly options: ViewOptions = {},
   ) {
     root.replaceChildren();
+    const split = options.layout === 'split';
+    root.classList.toggle('layout-split', split);
     const left = el('aside', 'opponents left');
-    const right = el('aside', 'opponents right');
+    const right = el('aside', split ? 'opponents grid2' : 'opponents right');
     const others = state.players.filter((p) => p.id !== humanId);
     others.forEach((p, i) => {
       const card = this.makeOpp(p);
       this.opps.set(p.id, card);
-      (i < Math.ceil(others.length / 2) ? left : right).append(card.root);
+      (!split && i < Math.ceil(others.length / 2) ? left : right).append(card.root);
     });
 
     const arena = el('main', 'arena');
@@ -103,7 +115,9 @@ export class GameView {
     hint.innerHTML = `Thema: ${themeLabel} · <kbd>Tab</kbd> Strategie · <kbd>F4</kbd> Ton · <kbd>Esc</kbd> Abbrechen · `;
     hint.append(this.audioEl);
     arena.append(hud, targetLine, board, hint);
-    root.append(left, arena, right, this.makeLinks());
+    if (split) root.append(arena, right);
+    else root.append(left, arena, right);
+    if (options.svgLinks !== false) root.append(this.makeLinks());
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObs = new ResizeObserver(() => (this.geom = null));
       this.resizeObs.observe(root);
@@ -168,7 +182,7 @@ export class GameView {
   }
 
   private renderLinks(me: PlayerState): void {
-    if (this.opps.size === 0) return;
+    if (this.opps.size === 0 || this.options.svgLinks === false) return;
     this.geom ??= this.measure();
     const target = me.alive && me.targetId !== null ? this.geom.cards.get(me.targetId) : undefined;
     if (target) this.targetLink.setAttribute('d', this.linkPath(target, -5, false));
@@ -245,6 +259,15 @@ export class GameView {
     return this.board.getBoundingClientRect();
   }
 
+  stackRect(): DOMRect {
+    return this.stackEl.getBoundingClientRect();
+  }
+
+  /** Alle Gegner-Karten mit Position (Viewport) – für die Platine. */
+  cardRects(): { id: number; rect: DOMRect }[] {
+    return [...this.opps].map(([id, c]) => ({ id, rect: c.root.getBoundingClientRect() }));
+  }
+
   cardRect(id: number): DOMRect | undefined {
     return this.opps.get(id)?.root.getBoundingClientRect();
   }
@@ -308,7 +331,7 @@ export class GameView {
       if (active.id !== this.activeId) this.activate(active);
       const row = this.rows.get(active.id)!;
       const chars = row.children;
-      for (let i = 0; i < chars.length; i++) {
+      for (let i = 0; i < active.text.length; i++) {
         const c = chars[i] as HTMLElement;
         c.classList.toggle('done', i < me.cursor);
         c.classList.toggle('cur', i === me.cursor);
@@ -321,8 +344,15 @@ export class GameView {
 
   private makeRow(w: Word): HTMLElement {
     const row = el('div', w.garbage ? 'row garbage' : 'row', w.text);
+    this.addHint(row, w);
     this.rows.set(w.id, row);
     return row;
+  }
+
+  /** Übersetzung (Lernmodus) – steht rechts, getrennt vom zu tippenden Wort. */
+  private addHint(row: HTMLElement, w: Word): void {
+    const hint = !w.garbage ? this.translations?.[w.text] : undefined;
+    if (hint) row.append(el('span', 'hint-tr', hint));
   }
 
   /** Das aktive Wort bekommt einzelne Buchstaben-Spans. */
@@ -330,6 +360,7 @@ export class GameView {
     const row = this.rows.get(w.id) ?? this.makeRow(w);
     row.classList.add('active');
     row.replaceChildren(...[...w.text].map((ch) => el('span', 'ch', ch)));
+    this.addHint(row, w);
     this.activeId = w.id;
     this.activeCursor = -1;
   }

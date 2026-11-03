@@ -1,21 +1,36 @@
 import { THEME_MIXED, THEME_RANDOM } from '../core';
-import { WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
+import { VOCAB, WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
 import type { AvSettings } from './avSettings';
 import { el } from './labels';
 import { systemPrefersReducedMotion } from './motion';
+import { THEMES, type ThemeId } from '../theme/themes';
 import { clearPractice, listPractice, removePractice } from './practiceStore';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
 export const DEFAULT_BOTS = 18;
 
+/** Sprachwahl im Menü: normal tippen oder eine Sprache lernen. */
+export type LanguageChoice = Language | 'learn-de' | 'learn-en';
+
 interface Prefs {
-  language: Language;
+  language: LanguageChoice;
   theme: string;
   playerName: string;
+  /** Lernmodus: mit Gegnern (royale) oder in Ruhe (calm). */
+  learnMode: 'royale' | 'calm';
+}
+
+/** Sprache, in der tatsächlich getippt wird. */
+function typingLanguage(c: LanguageChoice): Language {
+  return c === 'learn-de' ? 'de' : c === 'learn-en' ? 'en' : c;
+}
+
+function isLearn(c: LanguageChoice): boolean {
+  return c === 'learn-de' || c === 'learn-en';
 }
 
 function loadPrefs(): Prefs {
-  const fallback: Prefs = { language: 'de', theme: THEME_RANDOM, playerName: 'Du' };
+  const fallback: Prefs = { language: 'de', theme: THEME_RANDOM, playerName: 'Du', learnMode: 'royale' };
   try {
     return { ...fallback, ...(JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<Prefs>) };
   } catch {
@@ -57,6 +72,32 @@ function segmented<T extends string>(options: [T, string][], value: T, onChange:
 export interface AvHooks {
   settings: AvSettings;
   onChange: (s: AvSettings) => void;
+}
+
+/** Theme und Layout. */
+export function renderLookControls(av: AvHooks): HTMLElement {
+  const form = el('div', 'form');
+  const theme = segmented<ThemeId>(
+    Object.values(THEMES).map((t) => [t.id, t.label] as [ThemeId, string]),
+    av.settings.theme,
+    (v) => {
+      av.settings.theme = v;
+      av.onChange(av.settings);
+    },
+  );
+  const layout = segmented<'center' | 'split'>(
+    [
+      ['center', 'Gegner links & rechts'],
+      ['split', 'Wörter links, Gegner rechts'],
+    ],
+    av.settings.layout,
+    (v) => {
+      av.settings.layout = v;
+      av.onChange(av.settings);
+    },
+  );
+  form.append(el('span', undefined, 'Theme'), theme, el('span', undefined, 'Layout'), layout);
+  return form;
 }
 
 /** Lautstärke, Stumm und Effekte – im Menü und als Baustein wiederverwendbar. */
@@ -104,15 +145,25 @@ export function renderAvControls(av: AvHooks): HTMLElement {
   return wrap;
 }
 
-export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => void, av: AvHooks): void {
+export function renderMenu(
+  root: HTMLElement,
+  onStart: (s: SessionSettings) => void,
+  av: AvHooks,
+  onHelp: () => void,
+): void {
   const prefs = loadPrefs();
   root.replaceChildren();
   const menu = el('div', 'menu');
 
-  const head = el('div');
+  const head = el('div', 'menu-head');
+  const titles = el('div');
   const h1 = el('h1');
   h1.append('Typing ', el('span', undefined, 'Royale'));
-  head.append(h1, el('p', 'sub', 'Tippen, Combos aufbauen, Müll verschicken. Der letzte Überlebende gewinnt.'));
+  titles.append(h1, el('p', 'sub', 'Tippen, Combos aufbauen, Müll verschicken. Der letzte Überlebende gewinnt.'));
+  const helpBtn = el('button', 'btn', 'Anleitung');
+  helpBtn.type = 'button';
+  helpBtn.addEventListener('click', onHelp);
+  head.append(titles, helpBtn);
 
   /* --- Einstellungen --- */
   const setup = el('div', 'card');
@@ -128,28 +179,54 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
 
   const themeHolder = el('div');
   const renderThemes = () => {
-    const data = WORD_DATA[prefs.language];
-    if (prefs.theme !== THEME_RANDOM && prefs.theme !== THEME_MIXED && !data.themes[prefs.theme]) {
+    const themes: [string, string][] = isLearn(prefs.language)
+      ? Object.entries(VOCAB.themes).map(([id, t]) => [id, t.label.de])
+      : Object.entries(WORD_DATA[typingLanguage(prefs.language)].themes).map(([id, t]) => [id, t.label]);
+    if (prefs.theme !== THEME_RANDOM && prefs.theme !== THEME_MIXED && !themes.some(([id]) => id === prefs.theme)) {
       prefs.theme = THEME_RANDOM;
     }
-    const opts: [string, string][] = [
-      [THEME_RANDOM, 'Zufall'],
-      [THEME_MIXED, 'Gemischt'],
-      ...Object.entries(data.themes).map(([id, t]) => [id, t.label] as [string, string]),
-    ];
+    const opts: [string, string][] = [[THEME_RANDOM, 'Zufall'], [THEME_MIXED, 'Gemischt'], ...themes];
     themeHolder.replaceChildren(segmented(opts, prefs.theme, (v) => (prefs.theme = v)));
   };
   renderThemes();
 
-  const lang = segmented<Language>(
+  // Nur im Lernmodus: mit Gegnern oder in Ruhe
+  const learnLabel = el('span', undefined, 'Modus');
+  const learnMode = segmented<'royale' | 'calm'>(
+    [
+      ['royale', 'Battle Royale'],
+      ['calm', 'In Ruhe (ohne Gegner)'],
+    ],
+    prefs.learnMode,
+    (v) => {
+      prefs.learnMode = v;
+      updateStartLabel();
+    },
+  );
+  const learnInfo = el('p', 'keys learn-info');
+  const learnSpacer = el('span');
+  const updateLearnRow = () => {
+    const learn = isLearn(prefs.language);
+    learnLabel.hidden = learnMode.hidden = learnInfo.hidden = learnSpacer.hidden = !learn;
+    learnInfo.textContent =
+      prefs.language === 'learn-de'
+        ? 'Du tippst deutsche Wörter, die englische Übersetzung steht daneben.'
+        : 'Du tippst englische Wörter, die deutsche Übersetzung steht daneben.';
+    updateStartLabel();
+  };
+
+  const lang = segmented<LanguageChoice>(
     [
       ['de', 'Deutsch'],
       ['en', 'English'],
+      ['learn-de', 'Deutsch lernen'],
+      ['learn-en', 'Englisch lernen'],
     ],
     prefs.language,
     (v) => {
       prefs.language = v;
       renderThemes();
+      updateLearnRow();
       renderPractice();
     },
   );
@@ -161,17 +238,36 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
   const seedLabel = el('label', undefined, 'Seed');
   seedLabel.htmlFor = 'seed';
 
-  form.append(nameLabel, name, el('span', undefined, 'Sprache'), lang, el('span', undefined, 'Thema'), themeHolder, seedLabel, seed);
+  form.append(
+    nameLabel,
+    name,
+    el('span', undefined, 'Sprache'),
+    lang,
+    learnSpacer,
+    learnInfo,
+    learnLabel,
+    learnMode,
+    el('span', undefined, 'Thema'),
+    themeHolder,
+    seedLabel,
+    seed,
+  );
 
   const start = el('button', 'btn primary', 'Runde starten');
   start.type = 'button';
+  const startInfo = el('span', 'keys');
+  const calm = () => isLearn(prefs.language) && prefs.learnMode === 'calm';
+  function updateStartLabel(): void {
+    startInfo.textContent = calm() ? 'Ohne Gegner · Esc beendet · Enter startet' : `${DEFAULT_BOTS} Gegner · Enter startet`;
+  }
   const go = () => {
     prefs.playerName = name.value.trim() || 'Du';
     savePrefs(prefs);
     const parsed = Number.parseInt(seed.value, 10);
     onStart({
-      mode: 'royale',
-      language: prefs.language,
+      mode: calm() ? 'calm' : 'royale',
+      language: typingLanguage(prefs.language),
+      learn: isLearn(prefs.language),
       theme: prefs.theme,
       seed: Number.isFinite(parsed) ? parsed >>> 0 : randomSeed(),
       botCount: DEFAULT_BOTS,
@@ -180,14 +276,15 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
   };
   start.addEventListener('click', go);
   const actions = el('div', 'actions');
-  actions.append(start, el('span', 'keys', `${DEFAULT_BOTS} Gegner · Enter startet`));
+  actions.append(start, startInfo);
   actions.style.marginTop = '1rem';
   setup.append(form, actions);
+  updateLearnRow();
 
   /* --- Übungsliste --- */
   const practice = el('div', 'card');
   const renderPractice = () => {
-    const entries = listPractice(prefs.language);
+    const entries = listPractice(typingLanguage(prefs.language));
     practice.replaceChildren(el('h2', undefined, `Übungsliste (${entries.length})`));
     if (entries.length === 0) {
       practice.append(el('p', 'empty', 'Noch leer. Nach jeder Runde landen hier Wörter, die dir schwerer fielen als dein Durchschnitt.'));
@@ -201,7 +298,7 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
       x.type = 'button';
       x.setAttribute('aria-label', `${e.text} entfernen`);
       x.addEventListener('click', () => {
-        removePractice(prefs.language, e.text);
+        removePractice(typingLanguage(prefs.language), e.text);
         renderPractice();
       });
       li.append(x);
@@ -216,7 +313,7 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
       savePrefs(prefs);
       onStart({
         mode: 'practice',
-        language: prefs.language,
+        language: typingLanguage(prefs.language),
         theme: THEME_MIXED,
         seed: randomSeed(),
         botCount: 0,
@@ -233,7 +330,7 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
         clear.textContent = 'Wirklich leeren?';
         return;
       }
-      clearPractice(prefs.language);
+      clearPractice(typingLanguage(prefs.language));
       renderPractice();
     });
     row.append(train, clear);
@@ -249,11 +346,14 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
     Tippe immer das <b>unterste</b> Wort. Groß-/Kleinschreibung zählt.<br>
     <kbd>Tab</kbd> Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)<br>
     <kbd>F4</kbd> Ton an/aus · <kbd>F2</kbd> Debug-Anzeige · <kbd>Esc</kbd> Runde abbrechen<br>
-    Combo 3 / 6 / 10 schickt Müll. Eigene Angriffe verrechnen zuerst eingehenden Müll.`;
+    Combo 3 / 6 / 10 schickt Müll. Eigene Angriffe verrechnen zuerst eingehenden Müll.<br>
+    Alles im Detail steht in der <b>Anleitung</b> oben rechts.`;
   help.append(keys);
 
   const avCard = el('div', 'card');
-  avCard.append(el('h2', undefined, 'Sound & Effekte'), renderAvControls(av));
+  const avControls = renderAvControls(av);
+  avControls.style.marginTop = '0.9rem';
+  avCard.append(el('h2', undefined, 'Darstellung & Sound'), renderLookControls(av), avControls);
 
   menu.append(head, setup, practice, avCard, help);
   root.append(menu);

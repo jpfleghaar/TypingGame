@@ -54,6 +54,8 @@ export class GameRunner {
 
   start(): void {
     if (this.running) return;
+    // Alles, was vor dem Start getippt wurde (Countdown), zählt nicht.
+    for (const c of this.controllers) c.reset?.();
     this.running = true;
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);

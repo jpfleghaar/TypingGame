@@ -2,9 +2,12 @@ import './ui/styles.css';
 import { AudioEngine } from './audio/AudioEngine';
 import { EffectsBridge } from './fx/effectsBridge';
 import { FxLayer } from './fx/FxLayer';
+import { pendingGarbage, ticksToMs } from './core';
 import { createSession, type Session, type SessionSettings } from './runtime/session';
 import { loadAv, saveAv, type AvSettings } from './ui/avSettings';
+import { runCountdown, type CountdownHandle } from './ui/countdown';
 import { DebugPanel } from './ui/debugPanel';
+import { renderHelp } from './ui/helpView';
 import { GameView } from './ui/gameView';
 import { el } from './ui/labels';
 import { randomSeed, renderMenu } from './ui/menu';
@@ -16,6 +19,7 @@ const screens = {
   menu: document.getElementById('menu')!,
   game: document.getElementById('game')!,
   results: document.getElementById('results')!,
+  help: document.getElementById('help')!,
 };
 
 type ScreenName = keyof typeof screens;
@@ -25,6 +29,7 @@ let overlay: HTMLElement | null = null;
 let debug: DebugPanel | null = null;
 let debugWanted = false;
 let view: GameView | null = null;
+let countdown: CountdownHandle | null = null;
 
 /* ---------- Sound & Effekte ---------- */
 const av = loadAv();
@@ -67,6 +72,8 @@ function closeOverlay(): void {
 }
 
 function teardown(): void {
+  countdown?.cancel();
+  countdown = null;
   debug?.destroy();
   debug = null;
   view?.destroy();
@@ -80,8 +87,14 @@ function toMenu(): void {
   closeOverlay();
   audio.stopMusic();
   fx.setIntensity(0, 0);
-  renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange });
+  renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
   show('menu');
+}
+
+function showHelp(): void {
+  renderHelp(screens.help, toMenu);
+  show('help');
+  screens.help.scrollTop = 0;
 }
 
 function startGame(settings: SessionSettings): void {
@@ -90,7 +103,7 @@ function startGame(settings: SessionSettings): void {
   teardown();
   const s = createSession(settings);
   session = s;
-  const v = new GameView(screens.game, s.humanId, s.runner.state, s.themeLabel);
+  const v = new GameView(screens.game, s.humanId, s.runner.state, s.themeLabel, s.bank.translations);
   view = v;
   const dbg = new DebugPanel(s.humanId, s.botProfiles, settings.seed);
   if (debugWanted) dbg.toggle();
@@ -98,7 +111,6 @@ function startGame(settings: SessionSettings): void {
   const bridge = new EffectsBridge(fx, v, s.humanId);
   v.setAudioStatus(audioStatus());
   audio.unlock();
-  audio.startMusic();
   let koShown = false;
   s.runner.onEvents((events) => {
     v.handleEvents(events);
@@ -114,11 +126,32 @@ function startGame(settings: SessionSettings): void {
   s.runner.onFrame((state, info) => {
     v.update(state, info);
     bridge.frame(state);
+    const me = state.players[s.humanId];
+    const fill = me.alive ? (me.stack.length - (state.config.stackMax - 5)) / 5 : 0;
+    const danger = me.alive ? Math.min(1, Math.max(0, fill, pendingGarbage(me.incoming) > 0 ? 0.45 : 0)) : 0;
+    audio.setGameState(ticksToMs(state.tick, state.config) / state.config.spawn.rampDurationMs, danger);
     dbg.update(state, info);
     if (state.finished && session === s) finish(s);
   });
   show('game');
-  s.runner.start();
+  // Startzustand schon zeigen (Stapel, Gegner), dann Countdown
+  v.update(s.runner.state, { tps: 0, alpha: 0 });
+  bridge.frame(s.runner.state);
+  const hint =
+    settings.mode === 'royale'
+      ? 'Tippe immer das unterste Wort · Tab wechselt die Ziel-Strategie'
+      : 'Tippe immer das unterste Wort · Esc beendet die Runde';
+  countdown = runCountdown(
+    s.runner.state.config.countdownSeconds,
+    hint,
+    (n) => audio.countdownBeep(n),
+    () => {
+      countdown = null;
+      if (session !== s) return;
+      audio.startMusic();
+      s.runner.start();
+    },
+  );
 }
 
 function showKoOverlay(s: Session, placement: number): void {
@@ -158,7 +191,7 @@ function finish(s: Session): void {
     screens.results,
     s.runner.state,
     s.humanId,
-    { seed: settings.seed, themeLabel: s.themeLabel, practice: settings.mode === 'practice' },
+    { seed: settings.seed, themeLabel: s.themeLabel, practice: settings.mode !== 'royale', mode: settings.mode },
     {
       again: () => startGame({ ...settings, seed: randomSeed() }),
       replaySeed: () => startGame(settings),
@@ -179,7 +212,7 @@ window.addEventListener('keydown', (e) => {
     av.muted = audio.toggleMute();
     saveAv(av);
     view?.setAudioStatus(audioStatus());
-    if (current === 'menu') renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange });
+    if (current === 'menu') renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
     return;
   }
   if (e.key === 'F2') {
@@ -191,9 +224,10 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (overlay) closeOverlay();
     if (current === 'game' && session) {
-      if (session.settings.mode === 'practice') finish(session);
+      if (countdown) toMenu(); // Abbruch vor dem Start: keine leere Auswertung
+      else if (session.settings.mode !== 'royale') finish(session);
       else toMenu();
-    } else if (current === 'results') toMenu();
+    } else if (current === 'results' || current === 'help') toMenu();
   } else if (e.key === 'Enter' && current === 'results' && lastSettings && document.activeElement === document.body) {
     startGame({ ...lastSettings, seed: randomSeed() });
   }
@@ -202,14 +236,18 @@ window.addEventListener('keydown', (e) => {
 toMenu();
 fx.start();
 
-// Entwickler-Abkürzung: ?autostart[=seed] startet sofort eine Runde, &debug zeigt die Debug-Anzeige.
+// Entwickler-Abkürzungen: ?autostart[=seed] startet sofort eine Runde, &debug zeigt die Debug-Anzeige,
+// &learn=de|en startet im Lernmodus, ?help öffnet die Anleitung.
 const params = new URLSearchParams(location.search);
 const auto = params.get('autostart');
 debugWanted = params.has('debug');
+const learnParam = params.get('learn');
+if (params.has('help')) showHelp();
 if (auto !== null) {
   startGame({
     mode: 'royale',
-    language: 'de',
+    learn: learnParam === 'de' || learnParam === 'en',
+    language: learnParam === 'en' ? 'en' : 'de',
     theme: 'mixed',
     seed: Number.parseInt(auto, 10) || randomSeed(),
     botCount: 18,

@@ -43,7 +43,8 @@ export const UPGRADES: readonly UpgradeDef[] = [
 export function createConfig() {
   return {
     ship: {
-      capacity: 120,
+      /** Gebalanced per `npm run simulate`: Mittel gegen Mittel ≈ 3:40 pro Runde. */
+      capacity: 260,
       startWords: 6,
     },
     throw: {
@@ -60,9 +61,9 @@ export function createConfig() {
     },
     drift: {
       enabled: true,
-      firstSpawnMs: 7000,
-      intervalStartMs: 9000,
-      intervalMinMs: 3000,
+      firstSpawnMs: 8000,
+      intervalStartMs: 16000,
+      intervalMinMs: 4500,
       /** Faktor pro Spielminute: 0.8 = Intervall schrumpft jede Minute um 20 %. */
       intervalShrinkPerMinute: 0.8,
       lifetimeMs: 6000,

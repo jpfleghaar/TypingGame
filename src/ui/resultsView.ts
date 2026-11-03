@@ -11,7 +11,7 @@ export function renderResults(
   root: HTMLElement,
   state: GameState,
   humanId: number,
-  info: { seed: number; themeLabel: string; practice: boolean },
+  info: { seed: number; themeLabel: string; practice: boolean; mode?: string },
   actions: ResultsActions,
 ): ProblemWord[] {
   root.replaceChildren();
@@ -21,7 +21,7 @@ export function renderResults(
   const mine = res.find((r) => r.id === humanId)!;
 
   const h1 = el('h1');
-  if (info.practice) h1.append('Übung beendet');
+  if (info.practice) h1.append(info.mode === 'calm' ? 'Runde beendet' : 'Übung beendet');
   else if (mine.placement === 1) h1.append(el('span', 'place', 'Sieg! '), 'Platz 1');
   else h1.append('Platz ', el('span', 'place', String(mine.placement)), ` von ${state.players.length}`);
   const sub = el(
@@ -83,7 +83,7 @@ export function renderResults(
   }
 
   const act = el('div', 'actions');
-  const again = el('button', 'btn primary', info.practice ? 'Nochmal üben' : 'Neue Runde');
+  const again = el('button', 'btn primary', info.mode === 'practice' ? 'Nochmal üben' : 'Neue Runde');
   const same = el('button', 'btn', 'Gleicher Seed');
   const menu = el('button', 'btn', 'Menü');
   for (const b of [again, same, menu]) b.type = 'button';

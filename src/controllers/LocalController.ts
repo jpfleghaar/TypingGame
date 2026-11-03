@@ -31,6 +31,10 @@ export class LocalController implements Controller {
     return out;
   }
 
+  reset(): void {
+    this.buffer = [];
+  }
+
   dispose(): void {
     this.target.removeEventListener('keydown', this.onKey);
   }

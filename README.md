@@ -18,9 +18,9 @@ Weitere Befehle:
 | `npm test` | Unit-Tests (Vitest) |
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` |
 | `npm run simulate -- 60` | Balancing-Simulation: 60 Runden nur mit Bots, zeigt Rundendauer und Platzierung nach WPM |
-| `npm run words` | Wortlisten aus `wordlists/` neu nach `src/data/words/*.json` bauen |
+| `npm run words` | Wortlisten und Lern-Vokabeln aus `wordlists/` neu nach `src/data/words/*.json` bauen |
 
-URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?autostart=1234` mit festem Seed), `&debug` blendet die Debug-Anzeige direkt ein.
+URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?autostart=1234` mit festem Seed), `&debug` blendet die Debug-Anzeige direkt ein, `&learn=en` bzw. `&learn=de` startet im Lernmodus, `?help` öffnet die Anleitung.
 
 ## Steuerung
 
@@ -34,20 +34,28 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 
 ## Regeln in Kürze
 
-- Dein Stapel fasst 12 Wörter. Regelmäßig kommt oben ein neues Wort dazu, und das Tempo steigt im Lauf der Runde. Ein 13. Wort bedeutet K.O.
-- Alle Spieler bekommen dieselbe Wortfolge. Die Müllwörter sind für jeden Spieler zufällig.
+- Vor jeder Runde läuft ein 5-Sekunden-Countdown (`countdownSeconds` in der Config). Tastendrücke zählen erst ab „Los!“.
+- Dein Stapel fasst 12 Wörter. Regelmäßig kommt oben ein neues Wort dazu, und das Tempo steigt im Lauf der Runde. Ein 13. Wort bedeutet K.O. Tippst du deinen Stapel leer, bekommst du sofort das nächste Wort.
+- Alle Spieler bekommen dieselbe Wortfolge, jeder in seinem eigenen Tempo. Die Müllwörter sind für jeden Spieler zufällig.
 - **Combo:** Jedes fehlerfreie Wort erhöht sie. Ein Tippfehler setzt sie auf 0, das Wort bleibt stehen.
-- **Angriffe:** Bei Combo 3, 6 und 10 schickst du 1, 2 bzw. 3 Müllwörter, danach alle 4 Wörter 3.
+- **Angriffe:** Bei Combo 3, 6 und 10 schickst du 1, 2 bzw. 3 Müllwörter, danach alle 8 Wörter 2.
 - **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müllwörter werden im Lauf der Runde schwerer: erst normale lange Wörter, später Komposita und Monster-Wörter mit gemischter Groß-/Kleinschreibung. Sie enthalten nur Buchstaben.
 - **Abwehr:** Ein eigener Angriff verrechnet zuerst den Müll, der gerade zu dir unterwegs ist. Nur der Rest geht an dein Ziel.
 - **K.O.-Abzeichen:** Wer jemanden K.O. schickt (d. h. in den letzten 10 s Müll bei ihm gelandet hat), bekommt dessen Abzeichen + 1. Ab 2 / 6 / 14 / 30 Abzeichen sind deine Angriffe um 25 / 50 / 75 / 100 % stärker.
+- **Lernmodus:** Unter „Sprache“ gibt es „Deutsch lernen“ und „Englisch lernen“. Du tippst Wörter in der Lernsprache, die Übersetzung steht klein daneben. Wahlweise im Battle Royale oder „In Ruhe“ (ohne Gegner, ohne Müll, langsameres Tempo).
 - **Übungsliste:** Nach jeder Runde werden Wörter gespeichert, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast. Im Menü kannst du sie ansehen und ohne Gegner üben.
+
+Eine ausführliche Anleitung für Spieler gibt es im Spiel (Button „Anleitung“ im Menü). Die Zahlen darin kommen direkt aus der Config.
+
+## Sound
+
+Alles wird synthetisch mit der Web Audio API erzeugt, ohne Audiodateien ([`src/audio/AudioEngine.ts`](src/audio/AudioEngine.ts)). Die Musik ist ein treibender 8-Takt-Loop in a-Moll mit 128 BPM, der im Lauf der Runde auf 152 BPM anzieht. Mit der Combo kommen Schichten dazu: ab 3 Hi-Hats, ab 6 ein Arpeggio mit Echo, ab 10 Lead-Melodie, Crash und Riser. Ist der eigene Stapel fast voll oder kommt Müll, setzt eine pulsierende Spannungs-Schicht ein.
 
 ## Balancing
 
 Alle Werte stehen zentral in [`src/core/config.ts`](src/core/config.ts): Spawn-Tempo und Rampe, Stapelhöhe, Combo-Stufen, Müllmenge, Warnzeit, Abzeichen-Bonus, Zielwahl und Problemwort-Erkennung. Nach Änderungen zeigt `npm run simulate`, wie sich Rundendauer und Platzierungen verschieben.
 
-Stand der Simulation (60 Runden, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:25. Spieler unter 40 WPM überleben etwa 1:30–2:15, Spieler mit 60–75 WPM etwa 3:20.
+Stand der Simulation (60 Runden, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:20 (alle zwischen 4:00 und 4:45). Spieler unter 30 WPM überleben etwa 1:05, mit 45–59 WPM etwa 2:20, mit 60–75 WPM etwa 2:45.
 
 ## Architektur
 
@@ -64,10 +72,10 @@ src/
 │  └─ words/        Wortauswahl ohne Wiederholung, Müllwort-Generator
 ├─ controllers/     wer Eingaben liefert: Tastatur (LocalController) oder Bot (BotController)
 ├─ runtime/         GameRunner (feste Tick-Schleife), Session-Aufbau, Headless-Runner
-├─ ui/              DOM-Ansichten: Menü, Spiel, Auswertung, Debug
+├─ ui/              DOM-Ansichten: Menü, Spiel, Auswertung, Anleitung, Debug
 ├─ fx/              Canvas-Effekte (Partikel, Combo-Rand, Lichtspuren)
 ├─ audio/           Web-Audio-Synthese (Effekte + mehrschichtiger Musik-Loop)
-└─ data/words/      erzeugte Wortlisten (DE/EN, 8 Themen, kurz/mittel/lang)
+└─ data/words/      erzeugte Wortlisten (DE/EN, 8 Themen, kurz/mittel/lang) und Lern-Vokabeln (vocab.json)
 wordlists/          editierbare Rohlisten, eine Textdatei pro Thema
 scripts/            Wortlisten-Build und Balancing-Simulation
 tests/              Vitest
@@ -108,4 +116,4 @@ Die Architektur ist auf ein **Lockstep-Modell** ausgelegt: Alle Clients rechnen 
 
 ## Wortlisten erweitern
 
-Die Rohlisten liegen in `wordlists/<sprache>/<thema>.txt`, ein Wort pro Leerzeichen. `_garbage.txt` enthält zusätzliche schwere Wörter für Müll. Erlaubt sind nur Buchstaben inkl. ÄÖÜäöüß. Nach dem Bearbeiten `npm run words` ausführen: Das Skript prüft die Zeichen, entfernt Duplikate und sortiert nach Länge (kurz ≤ 5, mittel 6–9, lang ≥ 10 Zeichen). Ein neues Thema braucht in `scripts/build-words.mjs` nur ein Anzeige-Label.
+Die Rohlisten liegen in `wordlists/<sprache>/<thema>.txt`, ein Wort pro Leerzeichen. Die Lern-Vokabeln liegen in `wordlists/vocab/<thema>.txt` mit einem Paar pro Zeile (`Schmetterling butterfly`). `_garbage.txt` enthält zusätzliche schwere Wörter für Müll. Erlaubt sind nur Buchstaben inkl. ÄÖÜäöüß. Nach dem Bearbeiten `npm run words` ausführen: Das Skript prüft die Zeichen, entfernt Duplikate und sortiert nach Länge (kurz ≤ 5, mittel 6–9, lang ≥ 10 Zeichen). Ein neues Thema braucht in `scripts/build-words.mjs` nur ein Anzeige-Label.

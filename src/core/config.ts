@@ -8,6 +8,8 @@ export interface ComboThreshold {
 }
 
 export interface GameConfig {
+  /** Countdown vor Rundenbeginn in Sekunden (nur Anzeige, die Simulation startet danach bei Tick 0). */
+  countdownSeconds: number;
   /** Simulations-Ticks pro Sekunde. */
   tickRate: number;
   /** Maximale Zeilen im Stapel. Ein Wort mehr = K.O. */
@@ -96,15 +98,16 @@ export interface GameConfig {
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
+  countdownSeconds: 5,
   tickRate: 60,
   stackMax: 12,
   initialWords: 3,
 
   spawn: {
-    startIntervalMs: 5000,
+    startIntervalMs: 6500,
     endIntervalMs: 1000,
     rampDurationMs: 4 * 60_000,
-    rampCurve: 2,
+    rampCurve: 2.5,
     overtimeFactorPerMinute: 0.8,
     absoluteMinIntervalMs: 500,
   },
@@ -120,8 +123,8 @@ export const DEFAULT_CONFIG: GameConfig = {
       { combo: 6, garbage: 2 },
       { combo: 10, garbage: 3 },
     ],
-    repeatEvery: 4,
-    repeatGarbage: 3,
+    repeatEvery: 8,
+    repeatGarbage: 2,
   },
 
   garbage: {

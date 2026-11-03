@@ -58,11 +58,25 @@ function progress(state: GameState): number {
   return ticksToMs(state.tick, state.config) / state.config.spawn.rampDurationMs;
 }
 
-/** Zieht das nächste Wort der gemeinsamen Folge (für alle Spieler gleich). */
-function nextSharedWord(state: GameState, bank: WordBank): string {
-  const w = drawWord(bank, state.wordRng, state.recentWords, tierWeights(state.config, progress(state)));
-  remember(state.recentWords, w, state.config.words.noRepeatWindow);
-  return w;
+/**
+ * Wort Nr. `i` der gemeinsamen Folge. Die Folge wächst bei Bedarf – sobald der
+ * schnellste Spieler ein neues Wort braucht. Alle Spieler bekommen dieselben
+ * Wörter in derselben Reihenfolge, nur eben zu unterschiedlichen Zeitpunkten.
+ */
+function wordAt(state: GameState, bank: WordBank, i: number): string {
+  while (state.sequence.length <= i) {
+    const w = drawWord(bank, state.wordRng, state.recentWords, tierWeights(state.config, progress(state)));
+    remember(state.recentWords, w, state.config.words.noRepeatWindow);
+    state.sequence.push(w);
+  }
+  return state.sequence[i];
+}
+
+/** Legt das nächste Wort der Folge oben auf den Stapel eines Spielers. */
+function giveNextWord(state: GameState, bank: WordBank, p: PlayerState, events: GameEvent[] | null): void {
+  const word = makeWord(state, wordAt(state, bank, p.seqIndex++), false);
+  p.stack.push(word);
+  events?.push({ type: 'WORD_SPAWNED', playerId: p.id, word });
 }
 
 export function createGame(opts: CreateGameOptions): GameState {
@@ -74,6 +88,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     rng: createRng(deriveSeed(opts.seed, 1)),
     wordRng: createRng(deriveSeed(opts.seed, 2)),
     recentWords: [],
+    sequence: [],
     spawnCount: 0,
     nextSpawnTick: msToTicks(spawnIntervalMs(0, config), config),
     nextWordId: 1,
@@ -93,6 +108,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     strategy: setup.strategy ?? 'random',
     targetId: null,
     retargetTick: 0,
+    seqIndex: 0,
     incoming: [],
     lastHitBy: null,
     lastHitTick: -Infinity,
@@ -105,8 +121,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     wordLog: [],
   }));
   for (let i = 0; i < config.initialWords; i++) {
-    const text = nextSharedWord(state, opts.bank);
-    for (const p of state.players) p.stack.push(makeWord(state, text, false));
+    for (const p of state.players) giveNextWord(state, opts.bank, p, null);
   }
   updateTargets(state, []);
   return state;
@@ -237,16 +252,15 @@ function arriveGarbage(state: GameState, bank: WordBank, events: GameEvent[]): v
 
 function spawnWords(state: GameState, bank: WordBank, events: GameEvent[]): void {
   if (state.tick < state.nextSpawnTick) return;
-  const text = nextSharedWord(state, bank);
   state.spawnCount++;
-  for (const p of state.players) {
-    if (!p.alive) continue;
-    const word = makeWord(state, text, false);
-    p.stack.push(word);
-    events.push({ type: 'WORD_SPAWNED', playerId: p.id, word });
-  }
+  for (const p of state.players) if (p.alive) giveNextWord(state, bank, p, events);
   const interval = spawnIntervalMs(ticksToMs(state.tick, state.config), state.config);
   state.nextSpawnTick = state.tick + msToTicks(interval, state.config);
+}
+
+/** Wer seinen Stapel leer getippt hat, bekommt sofort das nächste Wort – kein Warten auf den Timer. */
+function refillEmpty(state: GameState, bank: WordBank, events: GameEvent[]): void {
+  for (const p of state.players) if (p.alive && p.stack.length === 0) giveNextWord(state, bank, p, events);
 }
 
 function knockOut(state: GameState, victim: PlayerState, events: GameEvent[]): void {
@@ -326,6 +340,7 @@ export function step(state: GameState, bank: WordBank, commands: readonly Comman
   for (const { c } of ordered) applyCommand(state, c, events);
   arriveGarbage(state, bank, events);
   spawnWords(state, bank, events);
+  refillEmpty(state, bank, events);
   checkOverflow(state, events);
   updateTargets(state, events);
   checkGameOver(state, events);

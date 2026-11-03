@@ -3,8 +3,10 @@ export type BotLevel = 'easy' | 'medium' | 'hard';
 export interface BotProfile {
   level: BotLevel;
   name: string;
-  /** Grundtempo in Wörtern pro Minute (1 Wort = 5 Anschläge). */
+  /** Effektives Tempo in Wörtern pro Minute (1 Wort = 5 Anschläge), inkl. Bedenkzeit und Korrekturen. */
   wpm: number;
+  /** Anschlagtempo innerhalb eines Worts relativ zu `wpm` (gleicht Bedenkzeit und Korrekturen aus). */
+  burst: number;
   /** Wahrscheinlichkeit pro Anschlag, sich zu vertippen. */
   errorRate: number;
   /** Streuung je Anschlag (Anteil des Grundtempos). */
@@ -27,6 +29,7 @@ export const BOT_PROFILES: Record<BotLevel, BotProfile> = {
     level: 'easy',
     name: 'Leicht',
     wpm: 30,
+    burst: 1.45,
     errorRate: 0.06,
     jitter: 0.35,
     drift: 0.18,
@@ -39,6 +42,7 @@ export const BOT_PROFILES: Record<BotLevel, BotProfile> = {
     level: 'medium',
     name: 'Mittel',
     wpm: 55,
+    burst: 1.42,
     errorRate: 0.04,
     jitter: 0.28,
     drift: 0.14,
@@ -51,6 +55,7 @@ export const BOT_PROFILES: Record<BotLevel, BotProfile> = {
     level: 'hard',
     name: 'Schwer',
     wpm: 85,
+    burst: 1.3,
     errorRate: 0.025,
     jitter: 0.2,
     drift: 0.1,

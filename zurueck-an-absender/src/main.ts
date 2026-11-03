@@ -1,6 +1,8 @@
 import './ui/styles.css';
 import { createConfig, createMatch, finishRound, startNextRound, type MatchState, type ShipId } from './core';
-import { IdleController } from './controllers/IdleController';
+import { deriveSeed } from './core/rng';
+import { BotController } from './controllers/BotController';
+import { BOT_PROFILES, type BotLevel } from './controllers/botProfiles';
 import { LocalController } from './controllers/LocalController';
 import { SceneRenderer } from './render/SceneRenderer';
 import { GameRunner } from './runtime/GameRunner';
@@ -41,6 +43,36 @@ const renderer = new SceneRenderer(canvas, ME);
 // --- Ablauf -------------------------------------------------------------------
 let match: MatchState | null = null;
 let runner: GameRunner | null = null;
+let level: BotLevel = loadLevel();
+
+function loadLevel(): BotLevel {
+  try {
+    const v = localStorage.getItem('zaa.botLevel');
+    if (v === 'easy' || v === 'medium' || v === 'hard') return v;
+  } catch {
+    /* privater Modus o. Ä. */
+  }
+  return 'medium';
+}
+
+function chooseLevel(l: BotLevel): void {
+  level = l;
+  try {
+    localStorage.setItem('zaa.botLevel', l);
+  } catch {
+    /* egal */
+  }
+  startMatch();
+}
+
+function showStart(): void {
+  overlay.show(startScreenHtml(level), {
+    '1': () => chooseLevel('easy'),
+    '2': () => chooseLevel('medium'),
+    '3': () => chooseLevel('hard'),
+    Enter: () => chooseLevel(level),
+  });
+}
 
 function startMatch(): void {
   const seed = fixedSeed ?? (Math.random() * 2 ** 32) >>> 0;
@@ -52,7 +84,9 @@ function startRound(): void {
   const m = match!;
   renderer.reset();
   let sunkAt: number | null = null;
-  runner = new GameRunner(m.game, [new LocalController(0), new IdleController(1)], {
+  const bot = new BotController(1, BOT_PROFILES[level], deriveSeed(m.seed, 100 + m.round));
+  hud.setEnemyName(`Gegner · ${bot.profile.name}`);
+  runner = new GameRunner(m.game, [new LocalController(0), bot], {
     onEvents(events, state) {
       renderer.onEvents(events, performance.now(), state);
       if (events.some((e) => e.type === 'SHIP_SUNK')) sunkAt = performance.now();
@@ -67,7 +101,14 @@ function startRound(): void {
       }
     },
   });
-  debug.attach({ run: (fn) => runner?.debug(fn), extra: () => [`Match-Seed ${m.seed} (Link: ?seed=${m.seed})`] });
+  debug.attach({
+    run: (fn) => runner?.debug(fn),
+    extra: () => [
+      `Match-Seed ${m.seed} (Link: ?seed=${m.seed})`,
+      `Bot ${bot.profile.name}: Soll ${bot.profile.wpm} WPM, gerade ${bot.currentWpm.toFixed(0)} WPM Anschlag · Fehler ${(bot.profile.errorRate * 100).toFixed(1)} %`,
+      `  Entscheidung: ${bot.lastDecision || '–'}`,
+    ],
+  });
   runner.start();
 }
 
@@ -78,7 +119,7 @@ function endRound(): void {
   const over = finishRound(m);
   overlay.show(roundSummaryHtml(m, ME, over), {
     Enter: () => {
-      if (over) startMatch();
+      if (over) showStart();
       else {
         startNextRound(m);
         startRound();
@@ -87,4 +128,4 @@ function endRound(): void {
   });
 }
 
-overlay.show(startScreenHtml(), { Enter: startMatch });
+showStart();

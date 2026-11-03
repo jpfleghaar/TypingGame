@@ -51,17 +51,20 @@ export class BotController implements Controller {
     seed: number,
   ) {
     this.rng = createRng(seed);
-    this.baseCharTicks = msToTicks(60000 / (profile.wpm * 5));
+    this.baseCharTicks = 60000 / (profile.wpm * profile.burst * 5) / (1000 / 60);
   }
 
   /** Aktuelles Tempo in WPM (für Debug). */
   get currentWpm(): number {
-    return this.profile.wpm / this.tempo;
+    return (this.profile.wpm * this.profile.burst) / this.tempo;
   }
 
   private charDelay(): number {
     const j = 1 + gaussian(this.rng) * this.profile.jitter;
-    return Math.max(1, Math.round(this.baseCharTicks * this.tempo * Math.min(2.5, Math.max(0.45, j))));
+    // Bruchteile von Ticks zufällig runden, damit das Mitteltempo exakt stimmt
+    const t = this.baseCharTicks * this.tempo * Math.min(2.5, Math.max(0.45, j));
+    const whole = Math.floor(t);
+    return Math.max(1, whole + (next(this.rng) < t - whole ? 1 : 0));
   }
 
   private wait(state: GameState, ticks: number): void {

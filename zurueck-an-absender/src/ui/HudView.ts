@@ -45,6 +45,10 @@ export class HudView {
     this.root.append(lists);
   }
 
+  setEnemyName(name: string): void {
+    this.enemy.root.querySelector('header .title')!.textContent = name;
+  }
+
   get topbarEl(): HTMLElement {
     return this.topbar;
   }

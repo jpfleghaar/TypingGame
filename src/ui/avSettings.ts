@@ -1,16 +1,23 @@
-/** Sound- und Effekt-Einstellungen, im Browser gespeichert. */
+import { DEFAULT_THEME, THEMES, type ThemeId } from '../theme/themes';
+
+/** Darstellungs-, Sound- und Effekt-Einstellungen, im Browser gespeichert. */
 export interface AvSettings {
   volume: number;
   muted: boolean;
   reducedFx: boolean;
+  theme: ThemeId;
+  /** 'center': Gegner links und rechts; 'split': Wörter links, Gegner rechts. */
+  layout: 'center' | 'split';
 }
 
 const KEY = 'typing-royale.av.v1';
-const DEFAULTS: AvSettings = { volume: 0.6, muted: false, reducedFx: false };
+const DEFAULTS: AvSettings = { volume: 0.6, muted: false, reducedFx: false, theme: DEFAULT_THEME, layout: 'center' };
 
 export function loadAv(): AvSettings {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<AvSettings>) };
+    const s = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<AvSettings>) };
+    if (!THEMES[s.theme]) s.theme = DEFAULT_THEME;
+    return s;
   } catch {
     return { ...DEFAULTS };
   }

@@ -11,5 +11,7 @@ import type { Command, GameState, PlayerId } from '../core';
 export interface Controller {
   readonly playerId: PlayerId;
   poll(state: Readonly<GameState>): Command[];
+  /** Verwirft gepufferte Eingaben (z. B. Tastendrücke während des Countdowns). */
+  reset?(): void;
   dispose?(): void;
 }
