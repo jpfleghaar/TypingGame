@@ -38,7 +38,7 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 - Alle Spieler bekommen dieselbe Wortfolge. Die Müllwörter sind für jeden Spieler zufällig.
 - **Combo:** Jedes fehlerfreie Wort erhöht sie. Ein Tippfehler setzt sie auf 0, das Wort bleibt stehen.
 - **Angriffe:** Bei Combo 3, 6 und 10 schickst du 1, 2 bzw. 3 Müllwörter, danach alle 4 Wörter 3.
-- **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müllwörter sind lange Komposita mit gemischter Schreibung, Umlauten und Zahlen.
+- **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müllwörter werden im Lauf der Runde schwerer: erst normale lange Wörter, später Komposita und Monster-Wörter mit gemischter Groß-/Kleinschreibung. Sie enthalten nur Buchstaben.
 - **Abwehr:** Ein eigener Angriff verrechnet zuerst den Müll, der gerade zu dir unterwegs ist. Nur der Rest geht an dein Ziel.
 - **K.O.-Abzeichen:** Wer jemanden K.O. schickt (d. h. in den letzten 10 s Müll bei ihm gelandet hat), bekommt dessen Abzeichen + 1. Ab 2 / 6 / 14 / 30 Abzeichen sind deine Angriffe um 25 / 50 / 75 / 100 % stärker.
 - **Übungsliste:** Nach jeder Runde werden Wörter gespeichert, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast. Im Menü kannst du sie ansehen und ohne Gegner üben.

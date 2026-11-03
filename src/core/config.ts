@@ -56,8 +56,6 @@ export interface GameConfig {
      */
     startDifficulty: number;
     rampMs: number;
-    /** Wahrscheinlichkeit, dass ein Müllwort eine Zahl enthält. */
-    digitChance: number;
     /** Wahrscheinlichkeit für ein Kompositum aus zwei Wörtern (z. B. "MondKrater"). */
     compoundChance: number;
     /** Wahrscheinlichkeit für ein Monster-Wort aus der Müll-Liste (z. B. "Donaudampfschifffahrt"). */
@@ -130,7 +128,6 @@ export const DEFAULT_CONFIG: GameConfig = {
     warningMs: 3000,
     startDifficulty: 0.05,
     rampMs: 3.5 * 60_000,
-    digitChance: 0.5,
     compoundChance: 0.45,
     monsterChance: 0.35,
     caseFlipChance: 0.4,

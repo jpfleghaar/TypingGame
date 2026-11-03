@@ -75,7 +75,8 @@ export function garbageDifficulty(elapsedMs: number, cfg: GameConfig): number {
  * Baut ein Müllwort passend zur Schwierigkeit `difficulty` (0..1):
  * - niedrig: normales mittellanges oder langes Wort
  * - mittel: zunehmend lange Wörter, erste Komposita
- * - hoch: Komposita und Monster-Wörter, gemischte Schreibung, Zahlen
+ * - hoch: Komposita und Monster-Wörter, gemischte Schreibung
+ * Müllwörter enthalten nur Buchstaben, niemals Zahlen.
  */
 export function makeGarbageWord(
   bank: WordBank,
@@ -87,6 +88,7 @@ export function makeGarbageWord(
   const g = cfg.garbage;
   const d = Math.min(1, Math.max(0, difficulty));
   const recentSet = new Set(recent);
+  let last = '';
   for (let attempt = 0; attempt < 30; attempt++) {
     let w: string;
     const r = next(rng);
@@ -107,11 +109,9 @@ export function makeGarbageWord(
       const i = 1 + nextInt(rng, w.length - 1);
       w = w.slice(0, i) + flipCase(w[i]) + w.slice(i + 1);
     }
-    if (next(rng) < g.digitChance * d) {
-      const digits = String(nextInt(rng, 99) + 1);
-      w = next(rng) < 0.7 ? w + digits : digits + w;
-    }
+    last = w;
     if (!recentSet.has(w)) return w;
   }
-  return pick(rng, bank.garbageBases) + String(nextInt(rng, 900) + 100);
+  // Extrem kleine Wortliste: lieber eine Wiederholung als eine künstliche Variante.
+  return last;
 }

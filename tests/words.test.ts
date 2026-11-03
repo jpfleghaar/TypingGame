@@ -88,9 +88,8 @@ describe('Müllwörter', () => {
     const words = Array.from({ length: 200 }, () => makeGarbageWord(BANK, rng, DEFAULT_CONFIG, []));
     const avgLen = words.reduce((s, w) => s + w.length, 0) / words.length;
     expect(avgLen).toBeGreaterThan(10);
-    expect(words.some((w) => /\d/.test(w))).toBe(true);
     expect(words.some((w) => /[äöüÄÖÜß]/.test(w))).toBe(true);
-    expect(words.every((w) => /^[A-Za-zÄÖÜäöüß0-9]+$/.test(w))).toBe(true);
+    expect(words.every((w) => /^[A-Za-zÄÖÜäöüß]+$/.test(w))).toBe(true);
   });
 
   it('nutzen pro Spieler eigenen Zufall', () => {
@@ -109,18 +108,20 @@ describe('Müll-Schwierigkeit steigt mit der Rundenzeit', () => {
   const avgLen = (ws: string[]) => ws.reduce((s, w) => s + w.length, 0) / ws.length;
   const share = (ws: string[], re: RegExp) => ws.filter((w) => re.test(w)).length / ws.length;
 
-  it('am Anfang: normale Wörter, kaum Zahlen oder Schreibungs-Tricks', () => {
+  it('enthalten bei keiner Schwierigkeit Zahlen', () => {
+    for (const d of [0, 0.3, 0.7, 1]) expect(share(sample(d), /\d/)).toBe(0);
+  });
+
+  it('am Anfang: normale Wörter, kaum Schreibungs-Tricks', () => {
     const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
-    expect(share(early, /\d/)).toBeLessThan(0.08);
     // kein Großbuchstabe mitten im Wort (Komposita/Case-Flip) bei fast allen
     expect(share(early, /.[A-ZÄÖÜ]/)).toBeLessThan(0.1);
   });
 
-  it('am Ende: lang, mit Zahlen und gemischter Schreibung', () => {
+  it('am Ende: lang und mit gemischter Schreibung', () => {
     const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
     const late = sample(garbageDifficulty(DEFAULT_CONFIG.garbage.rampMs, DEFAULT_CONFIG));
     expect(avgLen(late)).toBeGreaterThan(avgLen(early) + 3);
-    expect(share(late, /\d/)).toBeGreaterThan(0.35);
     expect(share(late, /.[A-ZÄÖÜ]/)).toBeGreaterThan(0.4);
   });
 

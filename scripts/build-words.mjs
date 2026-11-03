@@ -23,7 +23,7 @@ const SHORT_MAX = 5;
 const MEDIUM_MAX = 9;
 
 let failed = false;
-for (const lang of readdirSync(SRC)) {
+for (const lang of readdirSync(SRC).filter((d) => d !== 'vocab')) {
   const dir = join(SRC, lang);
   const themes = {};
   let garbage = [];
@@ -55,4 +55,30 @@ for (const lang of readdirSync(SRC)) {
     .join(', ');
   console.log(`${lang}: ${all.size} eindeutige Wörter, ${garbage.length} Müll-Basen | ${stats}`);
 }
+/* ---------- Lern-Vokabeln: wordlists/vocab/<thema>.txt, je Zeile "Deutsch English" ---------- */
+const VOCAB = join(SRC, 'vocab');
+const vocabThemes = {};
+let pairCount = 0;
+for (const file of readdirSync(VOCAB).filter((f) => f.endsWith('.txt')).sort()) {
+  const id = file.replace(/\.txt$/, '');
+  const pairs = [];
+  const seenDe = new Set();
+  for (const [n, line] of readFileSync(join(VOCAB, file), 'utf8').split('\n').entries()) {
+    if (!line.trim()) continue;
+    const parts = line.trim().split(/\s+/);
+    if (parts.length !== 2 || !parts.every((w) => VALID.test(w))) {
+      console.error(`[vocab/${file}:${n + 1}] erwartet "Deutsch English": ${line}`);
+      failed = true;
+      continue;
+    }
+    if (seenDe.has(parts[0])) continue;
+    seenDe.add(parts[0]);
+    pairs.push(parts);
+  }
+  pairCount += pairs.length;
+  vocabThemes[id] = { label: { de: LABELS.de[id] ?? id, en: Object.values(LABELS.en)[Object.keys(LABELS.de).indexOf(id)] ?? id }, pairs };
+}
+writeFileSync(join(OUT, 'vocab.json'), JSON.stringify({ themes: vocabThemes }, null, 1) + '\n');
+console.log(`vocab: ${pairCount} Wortpaare in ${Object.keys(vocabThemes).length} Themen`);
+
 if (failed) process.exit(1);
