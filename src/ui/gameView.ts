@@ -1,6 +1,14 @@
-import { pendingGarbage, ticksToMs, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
+import { msToTicks, pendingGarbage, ticksToMs, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
 import type { FrameInfo } from '../runtime/GameRunner';
 import { el, formatTime, STRATEGY_LABEL } from './labels';
+import { motionReduced } from './motion';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+interface Geometry {
+  board: DOMRect;
+  cards: Map<number, DOMRect>;
+}
 
 interface OppCard {
   root: HTMLElement;
@@ -16,6 +24,8 @@ interface OppCard {
 export class GameView {
   private stackEl = el('div', 'stack');
   private warnFill = el('i');
+  private warnEl = el('div', 'warn');
+  private audioEl = el('span', 'audio-status');
   private warnCount = el('span', 'warn-count');
   private hud = {
     combo: el('b'),
@@ -31,9 +41,18 @@ export class GameView {
   private activeId = -1;
   private activeCursor = -1;
   private opps = new Map<number, OppCard>();
+  private board = el('div', 'board');
+  private links = document.createElementNS(SVG_NS, 'svg');
+  private targetLink = document.createElementNS(SVG_NS, 'path');
+  private attackerLinks = new Map<number, SVGPathElement>();
+  private geom: Geometry | null = null;
+  /** Wer mir wann zuletzt Müll geschickt hat (Tick), für die rote Markierung. */
+  private lastAttackFrom = new Map<number, number>();
+  private attackers = new Set<number>();
+  private resizeObs: ResizeObserver | null = null;
 
   constructor(
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     private readonly humanId: number,
     state: GameState,
     themeLabel: string,
@@ -70,8 +89,8 @@ export class GameView {
     b.append('Abzeichen: ', this.badgesEl);
     targetLine.append(t, b);
 
-    const board = el('div', 'board');
-    const warn = el('div', 'warn');
+    const board = this.board;
+    const warn = this.warnEl;
     warn.title = 'Eingehender Müll';
     warn.append(this.warnFill);
     const warnWrap = el('div');
@@ -81,9 +100,98 @@ export class GameView {
     board.append(warnWrap, this.stackEl);
 
     const hint = el('div', 'hint');
-    hint.innerHTML = `Thema: ${themeLabel} · <kbd>Tab</kbd> Strategie · <kbd>Esc</kbd> Abbrechen`;
+    hint.innerHTML = `Thema: ${themeLabel} · <kbd>Tab</kbd> Strategie · <kbd>F4</kbd> Ton · <kbd>Esc</kbd> Abbrechen · `;
+    hint.append(this.audioEl);
     arena.append(hud, targetLine, board, hint);
-    root.append(left, arena, right);
+    root.append(left, arena, right, this.makeLinks());
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObs = new ResizeObserver(() => (this.geom = null));
+      this.resizeObs.observe(root);
+    }
+  }
+
+  destroy(): void {
+    this.resizeObs?.disconnect();
+  }
+
+  /* ---------- Ziellinien (wen ich anvisiere, wer mich angreift) ---------- */
+
+  private makeLinks(): SVGSVGElement {
+    const svg = this.links;
+    svg.classList.add('links');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = `<defs>
+      <marker id="arrow-good" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrow-good"/></marker>
+      <marker id="arrow-danger" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="arrow-danger"/></marker>
+    </defs>`;
+    this.targetLink.classList.add('link', 'link-target');
+    this.targetLink.setAttribute('marker-end', 'url(#arrow-good)');
+    svg.append(this.targetLink);
+    return svg;
+  }
+
+  private measure(): Geometry {
+    const origin = this.root.getBoundingClientRect();
+    const rel = (r: DOMRect) => new DOMRect(r.x - origin.x, r.y - origin.y, r.width, r.height);
+    const cards = new Map<number, DOMRect>();
+    for (const [id, c] of this.opps) cards.set(id, rel(c.root.getBoundingClientRect()));
+    this.links.setAttribute('viewBox', `0 0 ${origin.width} ${origin.height}`);
+    return { board: rel(this.board.getBoundingClientRect()), cards };
+  }
+
+  /** Kurve vom Rand des eigenen Stapels zum Rand der Gegner-Karte. Läuft nie über die Textzone. */
+  private linkPath(card: DOMRect, offset: number, fromCard: boolean): string {
+    const b = this.geom!.board;
+    const cx = card.x + card.width / 2;
+    const cy = card.y + card.height / 2;
+    let x1: number, y1: number, x2: number, y2: number;
+    if (cx < b.x || cx > b.right) {
+      const left = cx < b.x;
+      x1 = left ? b.x - 4 : b.right + 4;
+      y1 = Math.min(b.bottom - 12, Math.max(b.y + 12, cy)) + offset;
+      x2 = left ? card.right + 4 : card.x - 4;
+      y2 = cy + offset;
+    } else {
+      const above = cy < b.y;
+      x1 = Math.min(b.right - 12, Math.max(b.x + 12, cx)) + offset;
+      y1 = above ? b.y - 4 : b.bottom + 4;
+      x2 = cx + offset;
+      y2 = above ? card.bottom + 4 : card.y - 4;
+    }
+    if (fromCard) [x1, y1, x2, y2] = [x2, y2, x1, y1];
+    const horizontal = Math.abs(x2 - x1) > Math.abs(y2 - y1);
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    return horizontal
+      ? `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`
+      : `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2}`;
+  }
+
+  private renderLinks(me: PlayerState): void {
+    if (this.opps.size === 0) return;
+    this.geom ??= this.measure();
+    const target = me.alive && me.targetId !== null ? this.geom.cards.get(me.targetId) : undefined;
+    if (target) this.targetLink.setAttribute('d', this.linkPath(target, -5, false));
+    this.targetLink.style.display = target ? '' : 'none';
+
+    const attackers = this.attackers;
+    for (const [id, path] of this.attackerLinks) {
+      if (!attackers.has(id)) {
+        path.remove();
+        this.attackerLinks.delete(id);
+      }
+    }
+    for (const id of attackers) {
+      let path = this.attackerLinks.get(id);
+      if (!path) {
+        path = document.createElementNS(SVG_NS, 'path');
+        path.classList.add('link', 'link-attacker');
+        path.setAttribute('marker-end', 'url(#arrow-danger)');
+        this.links.append(path);
+        this.attackerLinks.set(id, path);
+      }
+      path.setAttribute('d', this.linkPath(this.geom.cards.get(id)!, 5, true));
+    }
   }
 
   private makeOpp(p: PlayerState): OppCard {
@@ -99,26 +207,85 @@ export class GameView {
     return { root, bar: fill, badges, status };
   }
 
-  /** Reaktion auf Events (z. B. Fehler-Wackeln). */
+  /** Reaktion auf Events (Fehler-Wackeln, Wort-Auflösung, Abwehr, Abzeichen). */
   handleEvents(events: GameEvent[]): void {
     for (const e of events) {
       if (e.type === 'KEY_ERROR' && e.playerId === this.humanId) {
         const ch = this.rows.get(e.wordId)?.children[e.index] as HTMLElement | undefined;
-        if (ch) {
-          ch.classList.remove('err');
-          void ch.offsetWidth; // Animation neu starten
-          ch.classList.add('err');
-        }
+        if (ch) restartClass(ch, 'err');
+      } else if (e.type === 'ATTACK_SENT' && e.to === this.humanId) {
+        this.lastAttackFrom.set(e.from, e.arriveTick);
+      } else if (e.type === 'WORD_CLEARED' && e.playerId === this.humanId) {
+        this.dissolve(e.word.id);
+      } else if (e.type === 'GARBAGE_CANCELLED' && e.playerId === this.humanId) {
+        restartClass(this.warnEl, 'cancel');
+      } else if (e.type === 'BADGES_GAINED' && e.playerId === this.humanId) {
+        restartClass(this.badgesEl, 'pop');
       }
     }
   }
 
+  /** Fertiges Wort löst sich auf und driftet nach oben weg (< 200 ms). */
+  private dissolve(wordId: number): void {
+    const row = this.rows.get(wordId);
+    if (!row || motionReduced()) return;
+    const ghost = row.cloneNode(true) as HTMLElement;
+    ghost.classList.add('ghost');
+    ghost.querySelectorAll('.ch').forEach((c) => c.classList.add('done'));
+    ghost.style.top = `${row.offsetTop}px`;
+    ghost.style.left = `${row.offsetLeft}px`;
+    this.stackEl.append(ghost);
+    const remove = () => ghost.remove();
+    ghost.addEventListener('animationend', remove, { once: true });
+    setTimeout(remove, 400);
+  }
+
+  /** Viewport-Koordinaten für die Hintergrund-Effekte. */
+  boardRect(): DOMRect {
+    return this.board.getBoundingClientRect();
+  }
+
+  cardRect(id: number): DOMRect | undefined {
+    return this.opps.get(id)?.root.getBoundingClientRect();
+  }
+
+  flashCard(id: number, kind: 'good' | 'danger'): void {
+    const card = this.opps.get(id);
+    if (card) restartClass(card.root, kind === 'good' ? 'hit-good' : 'hit');
+  }
+
+  flashBoard(): void {
+    restartClass(this.warnEl, 'hit');
+  }
+
+  setAudioStatus(text: string): void {
+    this.audioEl.textContent = text;
+  }
+
   update(state: GameState, _info: FrameInfo): void {
     const me = state.players[this.humanId];
+    this.updateAttackers(state, me);
     this.renderStack(state, me);
     this.renderHud(state, me);
     this.renderWarn(state, me);
     this.renderOpponents(state, me);
+    this.renderLinks(me);
+  }
+
+  /**
+   * "Greift mich an" = hat mir tatsächlich Müll geschickt: entweder ist er noch
+   * unterwegs oder kam in den letzten Sekunden an. Reines Anvisieren zählt nicht.
+   */
+  private updateAttackers(state: GameState, me: PlayerState): void {
+    this.attackers.clear();
+    if (!me.alive) return;
+    const memory = msToTicks(state.config.targeting.attackerMemoryMs, state.config);
+    for (const g of me.incoming) this.attackers.add(g.from);
+    for (const [id, arriveTick] of this.lastAttackFrom) {
+      if (state.tick - arriveTick <= memory) this.attackers.add(id);
+      else this.lastAttackFrom.delete(id);
+    }
+    for (const id of this.attackers) if (!state.players[id].alive) this.attackers.delete(id);
   }
 
   private renderStack(state: GameState, me: PlayerState): void {
@@ -184,12 +351,14 @@ export class GameView {
     if (total === 0) {
       this.warnFill.style.height = '0';
       this.warnCount.textContent = '';
+      this.warnEl.classList.remove('imminent');
       return;
     }
     const next = me.incoming.reduce((a, b) => (a.arriveTick <= b.arriveTick ? a : b));
     const k = (state.tick - next.sentTick) / Math.max(1, next.arriveTick - next.sentTick);
     this.warnFill.style.height = `${Math.min(100, Math.max(0, k * 100)).toFixed(1)}%`;
     this.warnCount.textContent = `+${total}`;
+    this.warnEl.classList.toggle('imminent', k > 0.66);
   }
 
   private renderOpponents(state: GameState, me: PlayerState): void {
@@ -201,7 +370,7 @@ export class GameView {
       card.root.classList.toggle('hot', fill >= 0.6 && fill < 0.85);
       card.root.classList.toggle('critical', fill >= 0.85);
       card.root.classList.toggle('targeted', p.alive && me.targetId === id);
-      card.root.classList.toggle('attacker', p.alive && me.alive && p.targetId === me.id);
+      card.root.classList.toggle('attacker', this.attackers.has(id));
       if (!p.alive && !card.root.classList.contains('ko')) {
         card.root.classList.add('ko');
         card.badges.textContent = `#${p.placement}`;
@@ -209,4 +378,10 @@ export class GameView {
       }
     }
   }
+}
+
+function restartClass(e: Element, cls: string): void {
+  e.classList.remove(cls);
+  void (e as HTMLElement).offsetWidth; // Animation neu starten
+  e.classList.add(cls);
 }

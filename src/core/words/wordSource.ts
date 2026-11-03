@@ -64,24 +64,50 @@ function flipCase(ch: string): string {
   return ch === up ? low : up;
 }
 
-/** Baut ein schweres Müllwort: Komposita, gemischte Schreibung, Zahlen. */
-export function makeGarbageWord(bank: WordBank, rng: RngState, cfg: GameConfig, recent: readonly string[]): string {
+/** Müll-Schwierigkeit 0..1 zur Rundenzeit. */
+export function garbageDifficulty(elapsedMs: number, cfg: GameConfig): number {
+  const { startDifficulty, rampMs } = cfg.garbage;
+  const k = Math.min(1, Math.max(0, elapsedMs / rampMs));
+  return startDifficulty + (1 - startDifficulty) * k;
+}
+
+/**
+ * Baut ein Müllwort passend zur Schwierigkeit `difficulty` (0..1):
+ * - niedrig: normales mittellanges oder langes Wort
+ * - mittel: zunehmend lange Wörter, erste Komposita
+ * - hoch: Komposita und Monster-Wörter, gemischte Schreibung, Zahlen
+ */
+export function makeGarbageWord(
+  bank: WordBank,
+  rng: RngState,
+  cfg: GameConfig,
+  recent: readonly string[],
+  difficulty = 1,
+): string {
+  const g = cfg.garbage;
+  const d = Math.min(1, Math.max(0, difficulty));
   const recentSet = new Set(recent);
   for (let attempt = 0; attempt < 30; attempt++) {
     let w: string;
-    if (next(rng) < cfg.garbage.compoundChance && bank.compoundParts.length > 1) {
+    const r = next(rng);
+    if (r < g.compoundChance * d && bank.compoundParts.length > 1) {
       const a = pick(rng, bank.compoundParts);
       let b = pick(rng, bank.compoundParts);
       if (b === a) b = pick(rng, bank.compoundParts);
       w = capitalize(a) + capitalize(b);
-    } else {
+    } else if (r < (g.compoundChance + g.monsterChance) * d && bank.garbageBases.length > 0) {
       w = pick(rng, bank.garbageBases);
+    } else {
+      // Normales Wort: anfangs eher mittel, später eher lang
+      const preferLong = next(rng) < 0.25 + 0.75 * d;
+      const pool = preferLong && bank.long.length ? bank.long : bank.medium.length ? bank.medium : bank.long;
+      w = pool.length ? pick(rng, pool) : pick(rng, bank.garbageBases);
     }
-    if (next(rng) < cfg.garbage.caseFlipChance && w.length > 2) {
+    if (next(rng) < g.caseFlipChance * d && w.length > 2) {
       const i = 1 + nextInt(rng, w.length - 1);
       w = w.slice(0, i) + flipCase(w[i]) + w.slice(i + 1);
     }
-    if (next(rng) < cfg.garbage.digitChance) {
+    if (next(rng) < g.digitChance * d) {
       const digits = String(nextInt(rng, 99) + 1);
       w = next(rng) < 0.7 ? w + digits : digits + w;
     }

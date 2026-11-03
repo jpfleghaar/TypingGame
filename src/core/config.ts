@@ -22,6 +22,8 @@ export interface GameConfig {
     endIntervalMs: number;
     /** Dauer, in der das Tempo von start auf end steigt. */
     rampDurationMs: number;
+    /** Form der Rampe: 1 = linear, >1 = am Anfang gemütlich, gegen Ende steiler. */
+    rampCurve: number;
     /** Danach (Verlängerung) sinkt das Intervall pro Minute um diesen Faktor. */
     overtimeFactorPerMinute: number;
     /** Untergrenze, egal wie lange die Runde dauert. */
@@ -46,10 +48,20 @@ export interface GameConfig {
   garbage: {
     /** Vorwarnzeit, bevor Müll im Stapel landet. */
     warningMs: number;
+    /**
+     * Müll wird im Lauf der Runde schwerer: Schwierigkeit steigt linear von
+     * startDifficulty (Rundenbeginn) auf 1 (nach rampMs). Alle Chancen unten
+     * gelten bei voller Schwierigkeit und werden mit ihr multipliziert.
+     * Bei Schwierigkeit 0 ist Müll ein normales mittellanges/langes Wort.
+     */
+    startDifficulty: number;
+    rampMs: number;
     /** Wahrscheinlichkeit, dass ein Müllwort eine Zahl enthält. */
     digitChance: number;
-    /** Wahrscheinlichkeit für ein Kompositum aus zwei Wörtern statt eines Basis-Müllworts. */
+    /** Wahrscheinlichkeit für ein Kompositum aus zwei Wörtern (z. B. "MondKrater"). */
     compoundChance: number;
+    /** Wahrscheinlichkeit für ein Monster-Wort aus der Müll-Liste (z. B. "Donaudampfschifffahrt"). */
+    monsterChance: number;
     /** Wahrscheinlichkeit, dass zusätzlich ein Buchstabe die Groß/Kleinschreibung tauscht. */
     caseFlipChance: number;
   };
@@ -91,9 +103,10 @@ export const DEFAULT_CONFIG: GameConfig = {
   initialWords: 3,
 
   spawn: {
-    startIntervalMs: 3200,
-    endIntervalMs: 1300,
+    startIntervalMs: 5000,
+    endIntervalMs: 1000,
     rampDurationMs: 4 * 60_000,
+    rampCurve: 2,
     overtimeFactorPerMinute: 0.8,
     absoluteMinIntervalMs: 500,
   },
@@ -115,8 +128,11 @@ export const DEFAULT_CONFIG: GameConfig = {
 
   garbage: {
     warningMs: 3000,
+    startDifficulty: 0.05,
+    rampMs: 3.5 * 60_000,
     digitChance: 0.5,
-    compoundChance: 0.6,
+    compoundChance: 0.45,
+    monsterChance: 0.35,
     caseFlipChance: 0.4,
   },
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computeTarget, type GameState, type PlayerId } from '../src/core';
-import { newGame, QUIET } from './helpers';
+import { computeTarget, createGame, type GameState, type PlayerId } from '../src/core';
+import { BANK, newGame, QUIET } from './helpers';
 
 function snapshot(s: GameState): Map<PlayerId, PlayerId | null> {
   return new Map(s.players.map((p) => [p.id, p.targetId]));
@@ -79,5 +79,37 @@ describe('Zielauswahl', () => {
     expect(computeTarget(s, me, snapshot(s))).toBe(first);
     s.tick = me.retargetTick;
     expect(computeTarget(s, me, snapshot(s))).not.toBe(first);
+  });
+});
+
+describe('Fairness der Zielwahl', () => {
+  it('bei Gleichstand wird nicht immer die niedrigste ID gewählt', () => {
+    const chosen = new Set<number>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const s = newGame(8, seed, QUIET); // alle Stapel gleich hoch
+      const me = s.players[5];
+      me.strategy = 'weakest';
+      me.targetId = null;
+      chosen.add(computeTarget(s, me, snapshot(s))!);
+    }
+    expect(chosen.size).toBeGreaterThan(4);
+  });
+
+  it('zu Rundenbeginn zielen nicht alle Schwache-Bots auf Spieler 0', () => {
+    let onZero = 0;
+    let total = 0;
+    for (let seed = 1; seed <= 30; seed++) {
+      const s = createGame({
+        seed,
+        bank: BANK,
+        players: Array.from({ length: 19 }, (_, i) => ({ name: `P${i}`, strategy: i === 0 ? 'random' : 'weakest' })),
+      });
+      for (const p of s.players.slice(1)) {
+        total++;
+        if (p.targetId === 0) onZero++;
+      }
+    }
+    // fair wären ~1/18 ≈ 5,6 %
+    expect(onZero / total).toBeLessThan(0.12);
   });
 });

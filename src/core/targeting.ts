@@ -16,8 +16,14 @@ function lastAttackTick(attacker: PlayerId, victim: PlayerState): number {
   return t;
 }
 
-/** Wählt aus Kandidaten mit gleichem Bestwert: bisheriges Ziel bleibt, sonst niedrigste ID. */
+/**
+ * Wählt den Kandidaten mit dem höchsten Wert. Bei Gleichstand bleibt das
+ * bisherige Ziel, sonst wird ZUFÄLLIG (aus dem Seed) gewählt – niemals nach
+ * Spieler-ID, sonst würde immer derselbe Spieler (z. B. der Mensch auf ID 0)
+ * bevorzugt.
+ */
 function bestBy(
+  state: GameState,
   candidates: PlayerState[],
   score: (p: PlayerState) => number,
   current: PlayerId | null,
@@ -33,7 +39,7 @@ function bestBy(
   }
   if (best.length === 0) return null;
   if (current !== null && best.some((b) => b.id === current)) return current;
-  return best[0].id;
+  return best.length === 1 ? best[0].id : pick(state.rng, best).id;
 }
 
 /**
@@ -56,14 +62,15 @@ export function strategicTarget(
       const attackers = opponents.filter(
         (o) => targetsSnapshot.get(o.id) === me.id || state.tick - lastAttackTick(o.id, me) <= memory,
       );
-      return bestBy(attackers, (o) => lastAttackTick(o.id, me), me.targetId);
+      return bestBy(state, attackers, (o) => lastAttackTick(o.id, me), me.targetId);
     }
     case 'weakest':
-      return bestBy(opponents, danger, me.targetId);
+      return bestBy(state, opponents, danger, me.targetId);
     case 'badges': {
       const maxBadges = Math.max(...opponents.map((o) => o.badges));
       if (maxBadges <= 0) return null;
       return bestBy(
+        state,
         opponents.filter((o) => o.badges === maxBadges),
         danger,
         me.targetId,

@@ -9,9 +9,9 @@ import {
   type WordData,
 } from '../core';
 import type { Controller } from '../controllers/Controller';
-import { DummyBotController } from '../controllers/DummyBotController';
+import { BotController } from '../controllers/BotController';
+import { generateBotProfiles, type BotProfile } from '../controllers/botProfiles';
 import { LocalController } from '../controllers/LocalController';
-import { BOT_NAMES } from '../controllers/botNames';
 import de from '../data/words/de.json';
 import en from '../data/words/en.json';
 import { GameRunner } from './GameRunner';
@@ -37,6 +37,8 @@ export interface Session {
   humanId: number;
   bank: WordBank;
   themeLabel: string;
+  /** Profile der Bots, Index = playerId - 1 (für Debug-Anzeige). */
+  botProfiles: BotProfile[];
 }
 
 /** Wortquelle aus einer freien Liste (Übungsmodus). */
@@ -67,16 +69,17 @@ export function createSession(settings: SessionSettings, config: GameConfig = DE
   }
 
   const botCount = settings.mode === 'practice' ? 0 : settings.botCount;
-  const players: PlayerSetup[] = [{ name: settings.playerName, strategy: 'random' }];
-  for (let i = 0; i < botCount; i++) players.push({ name: BOT_NAMES[i % BOT_NAMES.length], strategy: 'random' });
+  const botProfiles = generateBotProfiles(settings.seed, { count: botCount, minWpm: 25, maxWpm: 110 });
+  const players: PlayerSetup[] = [
+    { name: settings.playerName, strategy: 'random' },
+    ...botProfiles.map((b) => ({ name: b.name, strategy: b.strategy })),
+  ];
 
   const state = createGame({ seed: settings.seed, players, bank, config });
   const humanId = 0;
-  const controllers: Controller[] = [new LocalController(humanId)];
-  for (let i = 1; i <= botCount; i++) {
-    // Platzhalter: 25–60 WPM, konstant (echte Bots folgen in Schritt 3).
-    const wpm = 25 + ((i * 37) % 36);
-    controllers.push(new DummyBotController(i, (wpm * 5) / 60 / config.tickRate));
-  }
-  return { settings, runner: new GameRunner(state, bank, controllers), humanId, bank, themeLabel };
+  const controllers: Controller[] = [
+    new LocalController(humanId),
+    ...botProfiles.map((b, i) => new BotController(i + 1, b, settings.seed)),
+  ];
+  return { settings, runner: new GameRunner(state, bank, controllers), humanId, bank, themeLabel, botProfiles };
 }

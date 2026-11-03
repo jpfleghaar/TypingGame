@@ -13,7 +13,7 @@ import {
   type Word,
 } from './types';
 import type { WordBank } from './words/wordBank';
-import { drawWord, makeGarbageWord, remember, tierWeights } from './words/wordSource';
+import { drawWord, garbageDifficulty, makeGarbageWord, remember, tierWeights } from './words/wordSource';
 
 export interface CreateGameOptions {
   seed: number;
@@ -46,7 +46,7 @@ function makeWord(state: GameState, text: string, garbage: boolean): Word {
 export function spawnIntervalMs(elapsedMs: number, cfg: GameConfig): number {
   const s = cfg.spawn;
   if (elapsedMs <= s.rampDurationMs) {
-    const k = elapsedMs / s.rampDurationMs;
+    const k = Math.pow(elapsedMs / s.rampDurationMs, s.rampCurve);
     return s.startIntervalMs + (s.endIntervalMs - s.startIntervalMs) * k;
   }
   const overtimeMin = (elapsedMs - s.rampDurationMs) / 60_000;
@@ -218,7 +218,8 @@ function arriveGarbage(state: GameState, bank: WordBank, events: GameEvent[]): v
     for (const pkt of due) {
       const words: Word[] = [];
       for (let i = 0; i < pkt.amount; i++) {
-        const text = makeGarbageWord(bank, p.garbageRng, state.config, p.recentGarbage);
+        const difficulty = garbageDifficulty(ticksToMs(state.tick, state.config), state.config);
+        const text = makeGarbageWord(bank, p.garbageRng, state.config, p.recentGarbage, difficulty);
         remember(p.recentGarbage, text, state.config.words.noRepeatWindow);
         words.push(makeWord(state, text, true));
       }

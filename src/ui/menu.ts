@@ -1,6 +1,8 @@
 import { THEME_MIXED, THEME_RANDOM } from '../core';
 import { WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
+import type { AvSettings } from './avSettings';
 import { el } from './labels';
+import { systemPrefersReducedMotion } from './motion';
 import { clearPractice, listPractice, removePractice } from './practiceStore';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
@@ -52,7 +54,57 @@ function segmented<T extends string>(options: [T, string][], value: T, onChange:
 }
 
 /** Baut das Startmenü. `onStart` erhält fertige Session-Einstellungen. */
-export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => void): void {
+export interface AvHooks {
+  settings: AvSettings;
+  onChange: (s: AvSettings) => void;
+}
+
+/** Lautstärke, Stumm und Effekte – im Menü und als Baustein wiederverwendbar. */
+export function renderAvControls(av: AvHooks): HTMLElement {
+  const wrap = el('div', 'audio-controls');
+  const volLabel = el('label', 'check');
+  const vol = el('input');
+  vol.type = 'range';
+  vol.min = '0';
+  vol.max = '100';
+  vol.value = String(Math.round(av.settings.volume * 100));
+  vol.setAttribute('aria-label', 'Lautstärke');
+  const volText = el('span', 'keys', `${vol.value} %`);
+  vol.addEventListener('input', () => {
+    av.settings.volume = Number(vol.value) / 100;
+    volText.textContent = `${vol.value} %`;
+    av.onChange(av.settings);
+  });
+  volLabel.append('Lautstärke', vol, volText);
+
+  const mute = el('label', 'check');
+  const muteBox = el('input');
+  muteBox.type = 'checkbox';
+  muteBox.checked = av.settings.muted;
+  muteBox.addEventListener('change', () => {
+    av.settings.muted = muteBox.checked;
+    av.onChange(av.settings);
+  });
+  mute.append(muteBox, 'Stumm (F4)');
+
+  const fx = el('label', 'check');
+  const fxBox = el('input');
+  fxBox.type = 'checkbox';
+  const system = systemPrefersReducedMotion();
+  fxBox.checked = system || av.settings.reducedFx;
+  fxBox.disabled = system;
+  fx.title = system ? 'Dein System bevorzugt reduzierte Bewegung – Effekte sind deshalb aus.' : '';
+  fxBox.addEventListener('change', () => {
+    av.settings.reducedFx = fxBox.checked;
+    av.onChange(av.settings);
+  });
+  fx.append(fxBox, system ? 'Effekte reduziert (Systemeinstellung)' : 'Effekte reduzieren');
+
+  wrap.append(volLabel, mute, fx);
+  return wrap;
+}
+
+export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => void, av: AvHooks): void {
   const prefs = loadPrefs();
   root.replaceChildren();
   const menu = el('div', 'menu');
@@ -196,11 +248,14 @@ export function renderMenu(root: HTMLElement, onStart: (s: SessionSettings) => v
   keys.innerHTML = `
     Tippe immer das <b>unterste</b> Wort. Groß-/Kleinschreibung zählt.<br>
     <kbd>Tab</kbd> Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)<br>
-    <kbd>F2</kbd> Debug-Anzeige · <kbd>Esc</kbd> Runde abbrechen<br>
+    <kbd>F4</kbd> Ton an/aus · <kbd>F2</kbd> Debug-Anzeige · <kbd>Esc</kbd> Runde abbrechen<br>
     Combo 3 / 6 / 10 schickt Müll. Eigene Angriffe verrechnen zuerst eingehenden Müll.`;
   help.append(keys);
 
-  menu.append(head, setup, practice, help);
+  const avCard = el('div', 'card');
+  avCard.append(el('h2', undefined, 'Sound & Effekte'), renderAvControls(av));
+
+  menu.append(head, setup, practice, avCard, help);
   root.append(menu);
 
   root.onkeydown = (e) => {

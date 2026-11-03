@@ -20,14 +20,14 @@ describe('UI-Rauchtest', () => {
     frame();
     const me = s.runner.state.players[0];
     const first = me.stack[0].text;
-    expect(root.querySelector('.row.active')?.textContent).toBe(first);
+    expect(root.querySelector('.row.active:not(.ghost)')?.textContent).toBe(first);
 
     for (const ch of first) press(ch);
     s.runner.tickOnce();
     frame();
     expect(me.stats.wordsCleared).toBe(1);
     expect(me.combo).toBe(1);
-    expect(root.querySelector('.row.active')?.textContent).toBe(me.stack[0].text);
+    expect(root.querySelector('.row.active:not(.ghost)')?.textContent).toBe(me.stack[0].text);
 
     press('#');
     s.runner.tickOnce();

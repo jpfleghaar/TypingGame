@@ -4,6 +4,7 @@ import {
   createRng,
   DEFAULT_CONFIG,
   drawWord,
+  garbageDifficulty,
   makeGarbageWord,
   remember,
   resolveThemeId,
@@ -97,5 +98,36 @@ describe('Müllwörter', () => {
     const a = makeGarbageWord(bank, createRng(1), DEFAULT_CONFIG, []);
     const b = makeGarbageWord(bank, createRng(2), DEFAULT_CONFIG, []);
     expect(a).not.toBe(b);
+  });
+});
+
+describe('Müll-Schwierigkeit steigt mit der Rundenzeit', () => {
+  const sample = (difficulty: number) => {
+    const rng = createRng(11);
+    return Array.from({ length: 400 }, () => makeGarbageWord(BANK, rng, DEFAULT_CONFIG, [], difficulty));
+  };
+  const avgLen = (ws: string[]) => ws.reduce((s, w) => s + w.length, 0) / ws.length;
+  const share = (ws: string[], re: RegExp) => ws.filter((w) => re.test(w)).length / ws.length;
+
+  it('am Anfang: normale Wörter, kaum Zahlen oder Schreibungs-Tricks', () => {
+    const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
+    expect(share(early, /\d/)).toBeLessThan(0.08);
+    // kein Großbuchstabe mitten im Wort (Komposita/Case-Flip) bei fast allen
+    expect(share(early, /.[A-ZÄÖÜ]/)).toBeLessThan(0.1);
+  });
+
+  it('am Ende: lang, mit Zahlen und gemischter Schreibung', () => {
+    const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
+    const late = sample(garbageDifficulty(DEFAULT_CONFIG.garbage.rampMs, DEFAULT_CONFIG));
+    expect(avgLen(late)).toBeGreaterThan(avgLen(early) + 3);
+    expect(share(late, /\d/)).toBeGreaterThan(0.35);
+    expect(share(late, /.[A-ZÄÖÜ]/)).toBeGreaterThan(0.4);
+  });
+
+  it('Schwierigkeit läuft von startDifficulty bis 1 und bleibt dann', () => {
+    const cfg = DEFAULT_CONFIG;
+    expect(garbageDifficulty(0, cfg)).toBeCloseTo(cfg.garbage.startDifficulty);
+    expect(garbageDifficulty(cfg.garbage.rampMs / 2, cfg)).toBeGreaterThan(0.4);
+    expect(garbageDifficulty(cfg.garbage.rampMs * 3, cfg)).toBe(1);
   });
 });
