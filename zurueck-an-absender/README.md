@@ -18,10 +18,13 @@ npm test             # Unit-Tests der Spiellogik
 npm run check-chains # Wortketten prüfen (--verbose zeigt Überschneidungen)
 ```
 
+URL-Parameter zum Testen: `?seed=42` (reproduzierbares Match), `?capacity=45`
+(kleinere Schiffe, kurze Runden).
+
 ## Stand
 
 - [x] Schritt 1: Spiellogik mit Tests (ohne Grafik)
-- [ ] Schritt 2: Schlichtes spielbares UI
+- [x] Schritt 2: Schlichtes spielbares UI (Gegner noch passiv)
 - [ ] Schritt 3: Bot
 - [ ] Schritt 4: Inseln und Upgrades (UI)
 - [ ] Schritt 5: Treibgut und Ereignisse (UI)
@@ -77,7 +80,11 @@ src/
     match.ts      Best of 3, Rundenstatistik
     rng.ts        Seed-basierter Zufall (kopiert aus typing-royale)
     words/        Wortketten (chains.ts) und Ziehen ohne Wiederholung (pool.ts)
-  controllers/  Controller-Interface: Mensch, Bot, später Netzwerk
+  controllers/  Controller-Interface: LocalController (Tastatur), IdleController, später Bot/Netzwerk
+  runtime/      GameRunner: feste 60-Hz-Ticks, fragt Controller ab, verteilt Events
+  render/       Canvas-Szene über die Schulter: eigenes Segelboot vorne von hinten,
+                Gegner in der Ferne (liest nur State + Events)
+  ui/           DOM: Frachtlisten, Treibgut, Overlays, Debug (F2)
 tests/          Vitest
 scripts/        check-chains
 ```

@@ -1,0 +1,364 @@
+:root {
+  --bg: #0b1320;
+  --panel: #111c2d;
+  --line: #22324a;
+  --text: #dde6ee;
+  --muted: #6f8399;
+  --faint: #44566c;
+  --good: #4fd1a5;
+  --danger: #ff6b5a;
+  --mono: ui-monospace, 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Vollbild: Szene füllt alles oberhalb der Listen */
+#app {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* --- Kopfzeile --- */
+.topbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: rgba(8, 14, 24, 0.55);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.topbar .score {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- Szene --- */
+.scene {
+  position: relative;
+  min-height: 0;
+}
+.scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- Listen: fest, ohne Bewegung --- */
+.lists {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.8fr) minmax(0, 0.9fr);
+  gap: 16px;
+  padding: 10px 12px 12px;
+  height: 31vh;
+  min-height: 230px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.lists section {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  overflow: hidden;
+}
+.lists header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.lists .stats {
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.lists .stats.danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+.lists .corner {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 12px;
+  color: var(--good);
+}
+.lists .corner:empty {
+  display: none;
+}
+.lists .corner + header {
+  margin-top: 14px;
+}
+.lists ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lists li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+.lists .word {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.lists .meta {
+  display: flex;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.lists .stage {
+  letter-spacing: 1px;
+}
+
+/* eigene Fracht: groß und gut lesbar; wird bei vielen Wörtern etwas kompakter */
+.own li .word {
+  font-size: 22px;
+  line-height: 1.3;
+}
+.own ul.dense li .word {
+  font-size: 18px;
+}
+.own ul.denser li .word,
+.own ul.cols li .word {
+  font-size: 15px;
+}
+.lists ul.cols {
+  columns: 2;
+  column-gap: 14px;
+}
+.lists ul.cols li {
+  break-inside: avoid;
+}
+.lists ul.cols .stage {
+  display: none;
+}
+.own li.active {
+  background: rgba(79, 209, 165, 0.09);
+}
+.own li.final .stage {
+  color: var(--danger);
+}
+
+/* Gegner: klein und blass */
+.enemy {
+  opacity: 0.55;
+}
+.enemy li .word {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+
+/* Treibgut */
+.drift li .word {
+  font-size: 19px;
+}
+.drift li {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.drift .life {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 2px;
+}
+.drift .life span {
+  display: block;
+  height: 100%;
+  background: var(--good);
+  border-radius: 2px;
+}
+.drift li.active {
+  background: rgba(79, 209, 165, 0.09);
+}
+
+.typed {
+  color: var(--good);
+}
+.enemy .typed {
+  color: var(--text);
+}
+.err {
+  display: inline-block;
+  color: var(--danger);
+  text-decoration: underline;
+  animation: shake 0.28s linear;
+}
+.fix-hint {
+  margin-left: 12px;
+  padding: 1px 7px;
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+  color: var(--danger);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  vertical-align: middle;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* --- Overlay --- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 10, 18, 0.72);
+  z-index: 10;
+}
+.overlay .panel {
+  max-width: 620px;
+  width: calc(100% - 32px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 26px 30px;
+}
+.overlay h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+}
+.overlay .lead {
+  color: var(--muted);
+}
+.overlay .keys {
+  list-style: none;
+  padding: 0;
+  color: var(--muted);
+}
+.overlay .keys li {
+  margin: 4px 0;
+}
+.good {
+  color: var(--good);
+}
+.danger {
+  color: var(--danger);
+}
+kbd {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  margin-right: 6px;
+}
+.overlay button {
+  margin-top: 14px;
+  background: var(--good);
+  color: #062218;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+.overlay button kbd {
+  border-color: rgba(0, 0, 0, 0.25);
+  color: #062218;
+  margin: 0 0 0 8px;
+}
+table.stats {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-variant-numeric: tabular-nums;
+}
+table.stats th,
+table.stats td {
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+}
+table.stats tbody th {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* --- Debug --- */
+.debug {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: min(520px, calc(100% - 20px));
+  background: rgba(8, 14, 24, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  z-index: 20;
+  font-size: 12px;
+}
+.debug h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.debug pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+}
+.debug .buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.debug button {
+  background: #1b2a40;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .err {
+    animation: none;
+  }
+}

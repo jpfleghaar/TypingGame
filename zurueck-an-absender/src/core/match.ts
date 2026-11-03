@@ -6,7 +6,8 @@ import type { GameState, ShipId } from './types';
 
 export interface ShipRoundStats {
   wpm: number;
-  accuracy: number;
+  /** null, wenn keine Taste gedrückt wurde */
+  accuracy: number | null;
   thrown: number;
   longestThrown: string;
   fished: number;
@@ -49,7 +50,7 @@ export function summarizeRound(game: GameState, round: number): RoundSummary {
     const total = s.correctKeys + s.wrongKeys;
     return {
       wpm: s.correctKeys / 5 / minutes,
-      accuracy: total === 0 ? 1 : s.correctKeys / total,
+      accuracy: total === 0 ? null : s.correctKeys / total,
       thrown: s.thrown,
       longestThrown: s.longestThrown,
       fished: s.fished,
