@@ -24,7 +24,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 [hidden] { display: none !important; }
 button, input, select { font: inherit; color: inherit; }
 
-#fx, #fx-front { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#fx, #fx-front, #fx-gl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 #fx-front { z-index: 4; }
 #app { position: relative; z-index: 1; height: 100%; }
 .screen { height: 100%; }
@@ -302,3 +302,71 @@ tr.ko-me td:nth-child(2)::after { content: ' ✝'; color: var(--danger); }
 @keyframes cd-fade { to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .countdown-num.pop, .countdown.leaving { animation: none; } }
 .reduced-fx .countdown-num.pop, .reduced-fx .countdown.leaving { animation: none; }
+
+/* ---------- Theme "Platine" ---------- */
+/* Breitere Lücken, damit die Leiterbahnen zwischen Karten und Posteingang Platz haben */
+[data-theme='datanet'] #game { gap: calc(var(--u) * 4.2); --u: clamp(11px, min(2.05vh, 1.02vw), 34px); }
+[data-theme='datanet'] .stack { border-color: rgba(var(--good-rgb), 0.35); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 0 calc(var(--u) * 1.6) rgba(var(--good-rgb), 0.08); }
+[data-theme='datanet'] .opp { border-color: rgba(var(--good-rgb), 0.14); }
+.opp .node-tag {
+  margin-left: 0.6em; font-family: var(--mono); font-size: 0.62em; letter-spacing: 0.04em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 3px; padding: 0 0.3em; vertical-align: 0.15em;
+}
+#fx-gl { z-index: 0; }
+/* Platine: Karten leicht durchscheinend, damit das Leuchten der Pads durchkommt */
+[data-theme='datanet'] .opp { background: rgba(16, 20, 28, 0.9); }
+[data-theme='datanet'] .hud .stat { background: rgba(16, 20, 28, 0.9); }
+/* Platine: Angreifer zeigt die rot pulsierende Leiterbahn – kein zusätzlicher Punkt */
+[data-theme='datanet'] .opp.attacker::after { display: none; }
+
+/* ---------- Feste Spielfläche (Platine mit Hintergrundbild) ---------- */
+#game.layout-board { display: block; position: relative; padding: 0; overflow: hidden; }
+#game.layout-board .board-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; font-size: var(--u); --row: calc(var(--u) * 2.5); }
+#game.layout-board .arena { display: flex; flex-direction: column; gap: calc(var(--u) * 0.8); }
+#game.layout-board .opp { box-sizing: border-box; align-content: center; backdrop-filter: blur(2px); }
+.opp.has-avatar { grid-template-columns: auto 1fr auto; column-gap: calc(var(--u) * 0.7); }
+.opp.has-avatar .avatar {
+  grid-row: 1 / span 2; width: calc(var(--u) * 3.1); height: calc(var(--u) * 3.1); border-radius: 50%;
+  object-fit: cover; box-shadow: 0 0 0 1px rgba(var(--good-rgb), 0.35);
+}
+.opp.has-avatar .bar { grid-column: 2 / -1; }
+.opp.ko .avatar { filter: grayscale(1) brightness(0.5) !important; }
+#game.layout-board .opp { background: rgba(14, 17, 24, 0.96); }
+/* Texte direkt auf dem Bild: dunkler Schatten für Lesbarkeit */
+#game.layout-board .target-line, #game.layout-board .hint, #game.layout-board .warn-count {
+  text-shadow: 0 0 4px #000, 0 0 8px #000, 0 1px 2px #000;
+}
+#game.layout-board .target-line { background: rgba(7, 9, 14, 0.7); border-radius: 6px; padding: 0.15em 0.5em; }
+#game.layout-board .hint { background: rgba(7, 9, 14, 0.7); border-radius: 6px; padding: 0.15em 0.5em; align-self: center; }
+#game.layout-board .hint { white-space: nowrap; font-size: calc(var(--u) * 0.78); }
+#game.layout-board .opp.ko { opacity: 1; }
+#game.layout-board .opp.ko > * { opacity: 0.5; }
+
+/* ---------- Hacker-Schrift (Theme "Platine") ---------- */
+:root { --display: var(--sans); }
+[data-theme='datanet'] {
+  --mono: 'Share Tech Mono', 'JetBrains Mono', ui-monospace, 'DejaVu Sans Mono', monospace;
+  --sans: 'Share Tech Mono', ui-monospace, 'DejaVu Sans Mono', monospace;
+  --display: 'Orbitron', 'Share Tech Mono', ui-monospace, monospace;
+}
+[data-theme='datanet'] h1, [data-theme='datanet'] h2, [data-theme='datanet'] .hud .stat b,
+[data-theme='datanet'] .countdown-num, [data-theme='datanet'] .results .place, [data-theme='datanet'] .btn.primary {
+  font-family: var(--display); letter-spacing: 0.04em;
+}
+[data-theme='datanet'] .hud .stat b { font-weight: 800; }
+[data-theme='datanet'] .hud .stat small, [data-theme='datanet'] .target-line, [data-theme='datanet'] .hint,
+[data-theme='datanet'] .countdown-label, [data-theme='datanet'] th, [data-theme='datanet'] .card h2 {
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+/* Tasten als [TAB] statt Tastenkappe */
+[data-theme='datanet'] kbd { background: none; border: none; padding: 0; color: var(--good); font-family: var(--mono); font-size: 1em; }
+
+/* Lautstärkeregler in der Hinweiszeile */
+.hint .vol { width: calc(var(--u, 16px) * 6); height: 1em; vertical-align: middle; accent-color: var(--good); padding: 0; margin: 0 0.3em; cursor: pointer; }
+
+/* Kopfzeile ganz oben auf der Spielfläche */
+#game.layout-board .hint.board-header {
+  display: flex; align-items: center; justify-content: center; gap: 0.35em; margin: 0;
+  background: rgba(7, 9, 14, 0.78); border-radius: 0 0 8px 8px; width: auto !important;
+  left: 50% !important; transform: translateX(-50%); padding: 0 1em;
+}

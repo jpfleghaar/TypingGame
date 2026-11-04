@@ -1,4 +1,5 @@
 import { THEME_MIXED, THEME_RANDOM } from '../core';
+import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
 import { VOCAB, WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
 import type { AvSettings } from './avSettings';
 import { el } from './labels';
@@ -7,7 +8,7 @@ import { THEMES, type ThemeId } from '../theme/themes';
 import { clearPractice, listPractice, removePractice } from './practiceStore';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
-export const DEFAULT_BOTS = 18;
+export const DEFAULT_BOTS = DEFAULT_BOT_FIELD.count;
 
 /** Sprachwahl im Menü: normal tippen oder eine Sprache lernen. */
 export type LanguageChoice = Language | 'learn-de' | 'learn-en';

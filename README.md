@@ -1,6 +1,6 @@
 # Typing Royale
 
-Ein Tipp-Battle-Royale im Browser für 19 Teilnehmer (du + 18 Bots). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst Wörter, baust Combos auf und schickst Müllwörter an deine Gegner. Wer überläuft, ist raus.
+Ein Tipp-Battle-Royale im Browser für 11 Teilnehmer (du + 10 Bots). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst Wörter, baust Combos auf und schickst Müllwörter an deine Gegner. Wer überläuft, ist raus.
 
 ## Starten
 
@@ -55,7 +55,9 @@ Alles wird synthetisch mit der Web Audio API erzeugt, ohne Audiodateien ([`src/a
 
 Alle Werte stehen zentral in [`src/core/config.ts`](src/core/config.ts): Spawn-Tempo und Rampe, Stapelhöhe, Combo-Stufen, Müllmenge, Warnzeit, Abzeichen-Bonus, Zielwahl und Problemwort-Erkennung. Nach Änderungen zeigt `npm run simulate`, wie sich Rundendauer und Platzierungen verschieben.
 
-Stand der Simulation (60 Runden, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:20 (alle zwischen 4:00 und 4:45). Spieler unter 30 WPM überleben etwa 1:05, mit 45–59 WPM etwa 2:20, mit 60–75 WPM etwa 2:45.
+Stand der Simulation (60 Runden, 11 Spieler, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:15 (alle zwischen 3:40 und 4:40). Spieler unter 30 WPM überleben etwa 1:05, mit 45–59 WPM etwa 2:25, mit 60–75 WPM etwa 2:55.
+
+Die Spielerzahl steht zentral in `DEFAULT_BOT_FIELD` ([`src/controllers/botProfiles.ts`](src/controllers/botProfiles.ts)).
 
 ## Architektur
 
@@ -117,3 +119,20 @@ Die Architektur ist auf ein **Lockstep-Modell** ausgelegt: Alle Clients rechnen 
 ## Wortlisten erweitern
 
 Die Rohlisten liegen in `wordlists/<sprache>/<thema>.txt`, ein Wort pro Leerzeichen. Die Lern-Vokabeln liegen in `wordlists/vocab/<thema>.txt` mit einem Paar pro Zeile (`Schmetterling butterfly`). `_garbage.txt` enthält zusätzliche schwere Wörter für Müll. Erlaubt sind nur Buchstaben inkl. ÄÖÜäöüß. Nach dem Bearbeiten `npm run words` ausführen: Das Skript prüft die Zeichen, entfernt Duplikate und sortiert nach Länge (kurz ≤ 5, mittel 6–9, lang ≥ 10 Zeichen). Ein neues Thema braucht in `scripts/build-words.mjs` nur ein Anzeige-Label.
+
+## Theme „Platine“ (Hintergrundbild)
+
+Das Theme „Platine“ nutzt ein Hintergrundbild mit fest eingezeichneten Leiterbahnen zu den Anschlüssen P1–P10. Die Spielfläche ist darauf abgestimmt und wird als Ganzes aufs Fenster skaliert: Jeder der 10 Gegner sitzt auf einem Anschluss, der Posteingang liegt über dem Chip. Gerendert wird mit WebGL (PixiJS) und Bloom ([`src/fx/pcb/PcbRenderer.ts`](src/fx/pcb/PcbRenderer.ts)):
+
+- Bahn-Bündel zum aktuellen Ziel leuchten bernsteinfarben, Bündel von Angreifern pulsieren rot, die Bahn eines ausgeschiedenen Gegners erlischt.
+- Angriffe fliegen als rote Lichtimpulse über die Bahnen.
+
+Ein neues Hintergrundbild bindest du so ein:
+
+```bash
+python3 scripts/extract-board.py <bild.jpg>
+```
+
+Das Skript (benötigt ImageMagick) findet die goldenen Leiterbahn-Bündel im Bild, schreibt je Anschluss eine Leucht-Maske (`src/assets/pcb/trace-pN.png`) und die Mittellinie für die Pakete (`src/fx/pcb/boardLayout.json`). Lage der Anschlüsse und des Chips stehen oben im Skript. Kartenplätze und Arena: [`src/fx/pcb/board.ts`](src/fx/pcb/board.ts). Der Gegner-Avatar liegt in `src/assets/pcb/avatar.png`.
+
+Mit Platine gilt immer diese feste Spielfläche; die Layout-Wahl „Wörter links“ wirkt nur beim klassischen Theme. Ohne WebGL fällt das Spiel auf eine einfache Canvas-Platine ohne Bild zurück.

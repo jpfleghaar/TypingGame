@@ -119,10 +119,21 @@ export class NetRenderer implements ThemeRenderer {
     const stack = this.view.stackRect();
     if (stack.width === 0) return; // noch nicht sichtbar
     const n = this.theme.net;
+    const cards = this.view.cardRects();
+    // Bahnabstand an die verfügbare Lücke zwischen Karten und Posteingang anpassen
+    const hubX = stack.x + stack.width / 2;
+    let spacing = n.trace.laneSpacing;
+    for (const side of [-1, 1]) {
+      const own = cards.filter((c) => (c.rect.x + c.rect.width / 2 < hubX ? -1 : 1) === side);
+      if (own.length === 0) continue;
+      const edge = side < 0 ? Math.max(...own.map((c) => c.rect.right)) : Math.min(...own.map((c) => c.rect.left));
+      const gap = side < 0 ? stack.left - edge : edge - stack.right;
+      spacing = Math.min(spacing, Math.max(2.5, gap / (own.length + 2)));
+    }
     this.board = routeBoard({
-      hub: { x: stack.x + stack.width / 2, y: stack.y + stack.height / 2 },
-      cards: this.view.cardRects(),
-      laneSpacing: n.trace.laneSpacing,
+      hub: { x: hubX, y: stack.y + stack.height / 2 },
+      cards,
+      laneSpacing: spacing,
       chamfer: n.trace.chamfer,
       minChipSize: n.chip.size,
     });
@@ -191,9 +202,9 @@ export class NetRenderer implements ThemeRenderer {
     for (const [id, t] of board.traces) {
       const alive = this.state.players[id]?.alive ?? false;
       const a = alive ? n.trace.alpha : n.trace.alpha * 0.25;
-      this.strokePath(c, t.path, rgba(p.muted, a), n.trace.width);
+      this.strokePath(c, t.path, rgba(n.trace.color, a), n.trace.width);
       // Vias an den Knicken
-      c.fillStyle = rgba(p.muted, a * 1.4);
+      c.fillStyle = rgba(n.trace.color, Math.min(1, a * 1.5));
       for (const v of t.vias) {
         c.beginPath();
         c.arc(v.x, v.y, n.trace.width * 1.1, 0, Math.PI * 2);

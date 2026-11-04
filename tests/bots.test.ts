@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, step, type Command, type WordData } from '../src/core';
 import { BotController } from '../src/controllers/BotController';
-import { generateBotProfiles, neighborKey } from '../src/controllers/botProfiles';
+import { DEFAULT_BOT_FIELD, generateBotProfiles, neighborKey } from '../src/controllers/botProfiles';
 import { createRng } from '../src/core/rng';
 import de from '../src/data/words/de.json';
 import { runHeadless } from '../src/runtime/headless';
@@ -12,12 +12,12 @@ describe('Bot-Profile', () => {
     const a = generateBotProfiles(42);
     const b = generateBotProfiles(42);
     expect(a).toEqual(b);
-    expect(a).toHaveLength(18);
+    expect(a).toHaveLength(DEFAULT_BOT_FIELD.count);
     const wpms = a.map((p) => p.wpm);
     expect(Math.min(...wpms)).toBeGreaterThanOrEqual(25);
     expect(Math.max(...wpms)).toBeLessThanOrEqual(110);
     expect(Math.max(...wpms) - Math.min(...wpms)).toBeGreaterThan(60);
-    expect(new Set(a.map((p) => p.name)).size).toBe(18);
+    expect(new Set(a.map((p) => p.name)).size).toBe(DEFAULT_BOT_FIELD.count);
   });
 
   it('Vertipper ist nie der richtige Buchstabe', () => {
@@ -62,7 +62,7 @@ describe('BotController', () => {
   });
 
   it('ganze Bot-Runde ist deterministisch und dauert 3–6 Minuten', () => {
-    const opts = { seed: 777, words: de as WordData, field: { count: 19, minWpm: 25, maxWpm: 110 } };
+    const opts = { seed: 777, words: de as WordData, field: { ...DEFAULT_BOT_FIELD, count: DEFAULT_BOT_FIELD.count + 1 } };
     const a = runHeadless(opts);
     const b = runHeadless(opts);
     expect(JSON.stringify(a.state)).toBe(JSON.stringify(b.state));

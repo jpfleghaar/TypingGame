@@ -51,6 +51,12 @@ export interface RoutingInput {
   laneSpacing: number;
   chamfer: number;
   minChipSize: number;
+  /**
+   * Optional: Die Bahnen enden am Rand dieses Rechtecks (z. B. dem Posteingang)
+   * statt an einem kleinen Chip in der Mitte – verteilt im Abstand `entrySpread`.
+   */
+  entryRect?: Rect;
+  entrySpread?: number;
 }
 
 /* ---------- Polylinien ---------- */
@@ -216,7 +222,11 @@ function routeSide(
   // Ziel-Höhen am Chip: gleichmäßig um die Chip-Mitte, Reihenfolge wie die Eintritts-Höhen
   entries.sort((a, b) => a.y - b.y);
   const n = entries.length;
-  const targets = entries.map((_, r) => hub.y + (r - (n - 1) / 2) * opts.laneSpacing);
+  // Verteilung am Eintritt: höchstens so weit, dass alle Bahnen auf die Seite passen
+  const spread = opts.entryRect
+    ? Math.min(opts.entrySpread ?? opts.laneSpacing, (chip.height * 0.9) / Math.max(1, n))
+    : opts.laneSpacing;
+  const targets = entries.map((_, r) => hub.y + (r - (n - 1) / 2) * spread);
 
   // Lanes: oberhalb liegende Bahnen – die oberste bekommt die Lane am nächsten zum Chip;
   // unterhalb liegende – die unterste bekommt die Lane am nächsten zum Chip. So kreuzt nichts.
@@ -243,7 +253,7 @@ export function routeBoard(opts: RoutingInput): Board {
   const right = cards.filter((c) => c.rect.x + c.rect.width / 2 >= hub.x);
   const maxSide = Math.max(left.length, right.length);
   const size = Math.max(opts.minChipSize, (maxSide + 1) * opts.laneSpacing);
-  const chip: Rect = { x: hub.x - size / 2, y: hub.y - size / 2, width: size, height: size };
+  const chip: Rect = opts.entryRect ?? { x: hub.x - size / 2, y: hub.y - size / 2, width: size, height: size };
   const traces = new Map<number, Trace>();
   for (const t of [...routeSide(left, hub, chip, 1, opts), ...routeSide(right, hub, chip, -1, opts)]) {
     traces.set(t.id, t);

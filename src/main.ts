@@ -1,8 +1,16 @@
+import '@fontsource/share-tech-mono/400.css';
+import '@fontsource/orbitron/600.css';
+import '@fontsource/orbitron/800.css';
 import './ui/styles.css';
 import { AudioEngine } from './audio/AudioEngine';
-import { EffectsBridge } from './fx/effectsBridge';
-import { FxLayer } from './fx/FxLayer';
+import { ClassicRenderer } from './fx/classic/ClassicRenderer';
+import { NetRenderer } from './fx/net/NetRenderer';
+import { PcbRenderer } from './fx/pcb/PcbRenderer';
+import { PCB_LAYOUT, pcbBoardSpec } from './fx/pcb/board';
+import type { ThemeRenderer } from './fx/ThemeRenderer';
+import { applyTheme, THEMES, type ThemeDef } from './theme/themes';
 import { pendingGarbage, ticksToMs } from './core';
+import { DEFAULT_BOT_FIELD } from './controllers/botProfiles';
 import { createSession, type Session, type SessionSettings } from './runtime/session';
 import { loadAv, saveAv, type AvSettings } from './ui/avSettings';
 import { runCountdown, type CountdownHandle } from './ui/countdown';
@@ -33,27 +41,60 @@ let countdown: CountdownHandle | null = null;
 
 /* ---------- Sound & Effekte ---------- */
 const av = loadAv();
+// Entwickler-Overrides (werden nicht gespeichert): &theme=classic|datanet, &layout=center|split
+{
+  const q = new URLSearchParams(location.search);
+  const t = q.get('theme');
+  if (t === 'classic' || t === 'datanet') av.theme = t;
+  const l = q.get('layout');
+  if (l === 'center' || l === 'split') av.layout = l;
+}
 const audio = new AudioEngine({ volume: av.volume, muted: av.muted });
-const fx = new FxLayer(
-  document.getElementById('fx') as HTMLCanvasElement,
-  document.getElementById('fx-front') as HTMLCanvasElement,
-);
+const bgCanvas = document.getElementById('fx') as HTMLCanvasElement;
+const fgCanvas = document.getElementById('fx-front') as HTMLCanvasElement;
+/** Eine Effekt-Engine pro Stil; beide teilen sich die zwei Canvas-Ebenen. */
+const netRenderer = new NetRenderer(bgCanvas, fgCanvas);
+const renderers: Record<ThemeDef['renderer'], ThemeRenderer> = {
+  classic: new ClassicRenderer(bgCanvas, fgCanvas),
+  net: netRenderer,
+  // WebGL mit Bloom; ohne WebGL-Unterstützung Rückfall auf die Canvas-2D-Platine
+  pcb: PcbRenderer.isSupported() ? new PcbRenderer(bgCanvas, fgCanvas) : netRenderer,
+};
+let theme: ThemeDef = THEMES[av.theme];
+let fx: ThemeRenderer = renderers[theme.renderer];
+
+/** Theme anwenden: Farben (CSS-Variablen), Effekt-Engine, Musikstil. */
+function applyThemeChoice(): void {
+  const next = THEMES[av.theme];
+  const nextFx = renderers[next.renderer];
+  if (nextFx !== fx) {
+    fx.stop();
+    fx.clear();
+    fx = nextFx;
+  }
+  theme = next;
+  applyTheme(theme);
+  fx.setTheme(theme);
+  fx.setMotion(!motionReduced());
+  fx.start();
+}
 
 function applyMotion(): void {
   setReducedFx(av.reducedFx);
-  fx.setEnabled(!motionReduced());
+  fx.setMotion(!motionReduced());
 }
 applyMotion();
 onSystemMotionChange(applyMotion);
 
 function audioStatus(): string {
-  return audio.muted ? 'Ton aus' : `Ton ${Math.round(audio.volume * 100)} %`;
+  return audio.muted ? 'stumm' : `${Math.round(audio.volume * 100)} %`;
 }
 
 function onAvChange(s: AvSettings): void {
   audio.setVolume(s.volume);
   if (audio.muted !== s.muted) audio.toggleMute();
   saveAv(s);
+  if (THEMES[s.theme] !== theme) applyThemeChoice();
   applyMotion();
 }
 
@@ -86,7 +127,7 @@ function toMenu(): void {
   session = null;
   closeOverlay();
   audio.stopMusic();
-  fx.setIntensity(0, 0);
+  fx.detach();
   renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
   show('menu');
 }
@@ -103,12 +144,32 @@ function startGame(settings: SessionSettings): void {
   teardown();
   const s = createSession(settings);
   session = s;
-  const v = new GameView(screens.game, s.humanId, s.runner.state, s.themeLabel, s.bank.translations);
+  // Platine (WebGL): feste Spielfläche auf dem Hintergrundbild, solange die Gegner auf P1–P10 passen
+  const opponents = s.runner.state.players.length - 1;
+  const onBoard = fx.kind === 'pcb' && opponents <= PCB_LAYOUT.pads.length;
+  const v = new GameView(screens.game, s.humanId, s.runner.state, s.themeLabel, s.bank.translations, {
+    layout: onBoard ? 'board' : av.layout,
+    board: onBoard ? pcbBoardSpec() : undefined,
+    svgLinks: theme.renderer === 'classic',
+    nodeLabels: theme.texts.nodeLabels,
+    texts: theme.texts.ui,
+    volume: {
+      value: av.volume,
+      onInput: (vol) => {
+        av.volume = vol;
+        audio.setVolume(vol);
+        if (audio.muted && vol > 0) av.muted = audio.toggleMute(); // Regler hochziehen = Ton wieder an
+        saveAv(av);
+        v.setAudioStatus(audioStatus());
+      },
+    },
+  });
   view = v;
   const dbg = new DebugPanel(s.humanId, s.botProfiles, settings.seed);
   if (debugWanted) dbg.toggle();
   debug = dbg;
-  const bridge = new EffectsBridge(fx, v, s.humanId);
+  const bridge = fx;
+  bridge.attach(v, s.humanId);
   v.setAudioStatus(audioStatus());
   audio.unlock();
   let koShown = false;
@@ -137,10 +198,12 @@ function startGame(settings: SessionSettings): void {
   // Startzustand schon zeigen (Stapel, Gegner), dann Countdown
   v.update(s.runner.state, { tps: 0, alpha: 0 });
   bridge.frame(s.runner.state);
+  const ui = theme.texts.ui;
+  const k = (key: string) => (ui.brackets ? `[${key.toUpperCase()}]` : key);
   const hint =
     settings.mode === 'royale'
-      ? 'Tippe immer das unterste Wort · Tab wechselt die Ziel-Strategie'
-      : 'Tippe immer das unterste Wort · Esc beendet die Runde';
+      ? `Tippe immer das unterste Wort ${ui.sep} ${k('Tab')} ${ui.brackets ? ui.tabLabel : 'wechselt die Ziel-Strategie'}`
+      : `Tippe immer das unterste Wort ${ui.sep} ${k('Esc')} beendet die Runde`;
   countdown = runCountdown(
     s.runner.state.config.countdownSeconds,
     hint,
@@ -164,7 +227,7 @@ function showKoOverlay(s: Session, placement: number): void {
   skip.addEventListener('click', () => fastForward(s));
   const actions = el('div', 'actions');
   actions.append(skip, watch);
-  card.append(el('h2', undefined, 'K.O.!'), el('p', 'keys', `Du bist auf Platz ${placement} gelandet.`), actions);
+  card.append(el('h2', undefined, theme.texts.koSelf), el('p', 'keys', `Du bist auf Platz ${placement} gelandet.`), actions);
   overlay.append(card);
   document.body.append(overlay);
   skip.focus();
@@ -184,7 +247,7 @@ function finish(s: Session): void {
   closeOverlay();
   teardown();
   audio.stopMusic();
-  fx.setIntensity(0, 0);
+  fx.detach();
   session = null;
   const settings = s.settings;
   const problems = renderResults(
@@ -234,7 +297,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 toMenu();
-fx.start();
+applyThemeChoice();
 
 // Entwickler-Abkürzungen: ?autostart[=seed] startet sofort eine Runde, &debug zeigt die Debug-Anzeige,
 // &learn=de|en startet im Lernmodus, ?help öffnet die Anleitung.
@@ -250,7 +313,7 @@ if (auto !== null) {
     language: learnParam === 'en' ? 'en' : 'de',
     theme: 'mixed',
     seed: Number.parseInt(auto, 10) || randomSeed(),
-    botCount: 18,
+    botCount: DEFAULT_BOT_FIELD.count,
     playerName: 'Du',
   });
 }

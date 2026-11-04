@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG } from '../core';
+import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
 import { el } from './labels';
 
 /**
@@ -24,7 +25,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
   const article = el('article', 'help-body');
   article.innerHTML = `
     <h1>Anleitung</h1>
-    <p class="lead">Typing Royale ist ein Tipp-Battle-Royale: 19 Spieler tippen gleichzeitig um die Wette.
+    <p class="lead">Typing Royale ist ein Tipp-Battle-Royale: ${DEFAULT_BOT_FIELD.count + 1} Spieler tippen gleichzeitig um die Wette.
     Wer gut tippt, schickt den anderen zusätzliche Wörter. Wessen Stapel überläuft, scheidet aus.
     Der letzte Überlebende gewinnt.</p>
 
@@ -37,7 +38,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
 
     <section id="h-ziel">
       <h2>Ziel des Spiels</h2>
-      <p>Du spielst gegen 18 Bots. Alle bekommen dieselben Wörter in derselben Reihenfolge, jeder in seinem eigenen Tempo. Bleib so lange wie möglich im Spiel:
+      <p>Du spielst gegen ${DEFAULT_BOT_FIELD.count} Bots. Alle bekommen dieselben Wörter in derselben Reihenfolge, jeder in seinem eigenen Tempo. Bleib so lange wie möglich im Spiel:
       Tippe deine Wörter weg, bevor dein Stapel voll ist, und mach deinen Gegnern das Leben schwer.
       Vor jeder Runde läuft ein Countdown von ${cfg.countdownSeconds} Sekunden. Du siehst dabei schon deine ersten Wörter,
       Tastendrücke zählen aber erst ab „Los!“. Eine Runde dauert meist 4 bis 5 Minuten. Am Ende siehst du deine Platzierung, WPM (Wörter pro Minute),
@@ -127,6 +128,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
         <dt>Links & rechts</dt><dd>Die Gegner. Der Balken zeigt die Füllung ihres Stapels (grün → gelb → rot), ★ zahlt ihre Abzeichen. Ausgeschiedene sind durchgestrichen und zeigen ihren Platz.</dd>
         <dt>Grüner Pfeil</dt><dd>Zeigt auf dein aktuelles Ziel. Deine Angriffe fliegen als grüne Lichtspur dorthin.</dd>
         <dt>Roter Punkt / roter Pfeil</dt><dd>Dieser Gegner hat dir gerade Müll geschickt. Angriffe auf dich kommen als rote Lichtspur.</dd>
+        <dt>Theme „Platine“</dt><dd>Jeder Gegner sitzt auf einem Anschluss der Platine. Die Leiterbahn zu deinem Ziel leuchtet bernsteinfarben, Bahnen von Angreifern pulsieren rot, und Angriffe fliegen als rote Lichtimpulse über die Bahnen. Scheidet ein Gegner aus, erlischt seine Bahn.</dd>
         <dt>Hintergrund</dt><dd>Die Partikel werden schneller, je schneller du gerade tippst.</dd>
       </dl>
     </section>

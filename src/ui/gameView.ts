@@ -10,11 +10,49 @@ interface Geometry {
   cards: Map<number, DOMRect>;
 }
 
+export interface DesignRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Feste Spielfläche (z. B. auf ein Hintergrundbild abgestimmt), wird aufs Fenster skaliert. */
+export interface BoardSpec {
+  width: number;
+  height: number;
+  /** Platz je Gegner (Reihenfolge = Gegner-Index). */
+  slots: DesignRect[];
+  /** Bereich für Posteingang + Ziel-Zeile + Werte (in dieser Reihenfolge von oben). */
+  arena: DesignRect;
+  /** Kopfzeile am oberen Rand (Modus, Tasten, Lautstärke). */
+  header: DesignRect;
+  /** Basis-Größeneinheit (--u) auf der Spielfläche in px. */
+  unit: number;
+  /** Avatar-Bild für die Gegner-Karten. */
+  avatar?: string;
+}
+
+/** Abbildung Spielflächen-Koordinaten → Bildschirm (Viewport). */
+export interface StageTransform {
+  scale: number;
+  x: number;
+  y: number;
+}
+
 export interface ViewOptions {
-  /** 'center': Gegner links und rechts; 'split': Wörter links, alle Gegner rechts. */
-  layout?: 'center' | 'split';
+  /** 'center': Gegner links und rechts; 'split': Wörter links, alle Gegner rechts; 'board': feste Spielfläche. */
+  layout?: 'center' | 'split' | 'board';
+  /** Nur bei layout 'board'. */
+  board?: BoardSpec;
   /** SVG-Pfeile für Ziel/Angreifer (das Datennetz zeichnet eigene Linien). */
   svgLinks?: boolean;
+  /** Bauteil-Labels für die Gegner-Karten (Theme), z. B. "RAM_01". */
+  nodeLabels?: readonly string[];
+  /** Beschriftungen/Trenner des Themes. */
+  texts?: { sep: string; modeLabel: string; targetLabel: string; tabLabel: string; brackets: boolean };
+  /** Lautstärkeregler in der Hinweiszeile. */
+  volume?: { value: number; onInput: (v: number) => void };
 }
 
 interface OppCard {
@@ -57,6 +95,9 @@ export class GameView {
   private lastAttackFrom = new Map<number, number>();
   private attackers = new Set<number>();
   private resizeObs: ResizeObserver | null = null;
+  private stage: HTMLElement | null = null;
+  private stageTf: StageTransform = { scale: 1, x: 0, y: 0 };
+  private onWindowResize = () => this.fitStage();
 
   constructor(
     private readonly root: HTMLElement,
@@ -68,14 +109,18 @@ export class GameView {
     private readonly options: ViewOptions = {},
   ) {
     root.replaceChildren();
+    const spec = options.layout === 'board' ? options.board : undefined;
     const split = options.layout === 'split';
     root.classList.toggle('layout-split', split);
+    root.classList.toggle('layout-board', !!spec);
     const left = el('aside', 'opponents left');
     const right = el('aside', split ? 'opponents grid2' : 'opponents right');
     const others = state.players.filter((p) => p.id !== humanId);
     others.forEach((p, i) => {
-      const card = this.makeOpp(p);
+      const card = this.makeOpp(p, options.nodeLabels?.[i % options.nodeLabels.length], spec?.avatar, i);
       this.opps.set(p.id, card);
+      const slot = spec?.slots[i];
+      if (slot) place(card.root, slot);
       (!split && i < Math.ceil(others.length / 2) ? left : right).append(card.root);
     });
 
@@ -96,7 +141,8 @@ export class GameView {
 
     const targetLine = el('div', 'target-line');
     const t = el('span');
-    t.append('Ziel: ', this.targetEl, ' · ', this.strategyEl);
+    const tx = options.texts ?? { sep: '·', modeLabel: 'Thema', targetLabel: 'Ziel', tabLabel: 'Strategie', brackets: false };
+    t.append(`${tx.targetLabel}: `, this.targetEl, ` ${tx.sep} `, this.strategyEl);
     const b = el('span');
     b.append('Abzeichen: ', this.badgesEl);
     targetLine.append(t, b);
@@ -112,10 +158,44 @@ export class GameView {
     board.append(warnWrap, this.stackEl);
 
     const hint = el('div', 'hint');
-    hint.innerHTML = `Thema: ${themeLabel} · <kbd>Tab</kbd> Strategie · <kbd>F4</kbd> Ton · <kbd>Esc</kbd> Abbrechen · `;
+    const key = (k: string) => el('kbd', undefined, tx.brackets ? `[${k.toUpperCase()}]` : k);
+    const sep = () => ` ${tx.sep} `;
+    hint.append(`${tx.modeLabel}: ${themeLabel}`, sep(), key('Tab'), ` ${tx.tabLabel}`, sep(), key('F4'), ' Ton', sep(), key('Esc'), ' Abbrechen', sep());
+    if (options.volume) {
+      // Lautstärkeregler; gibt den Fokus sofort zurück, damit Tippen weiter funktioniert
+      const vol = el('input', 'vol');
+      vol.type = 'range';
+      vol.min = '0';
+      vol.max = '100';
+      vol.value = String(Math.round(options.volume.value * 100));
+      vol.setAttribute('aria-label', 'Lautstärke');
+      vol.tabIndex = -1;
+      const cb = options.volume.onInput;
+      vol.addEventListener('input', () => cb(Number(vol.value) / 100));
+      vol.addEventListener('pointerup', () => vol.blur());
+      vol.addEventListener('change', () => vol.blur());
+      hint.append(vol, ' ');
+    }
     hint.append(this.audioEl);
-    arena.append(hud, targetLine, board, hint);
-    if (split) root.append(arena, right);
+    if (spec) {
+      // Feste Spielfläche: Posteingang oben, Ziel und Werte direkt darunter, Hinweise als Kopfzeile
+      arena.append(board, targetLine, hud);
+      hint.classList.add('board-header');
+      place(hint, spec.header);
+    } else arena.append(hud, targetLine, board, hint);
+    if (spec) {
+      // Feste Spielfläche: alles absolut in Spielflächen-Koordinaten, dann skaliert
+      const stage = el('div', 'board-stage');
+      stage.style.width = `${spec.width}px`;
+      stage.style.height = `${spec.height}px`;
+      stage.style.setProperty('--u', `${spec.unit}px`);
+      place(arena, spec.arena);
+      stage.append(...left.children, ...right.children, arena, hint);
+      root.append(stage);
+      this.stage = stage;
+      this.fitStage();
+      window.addEventListener('resize', this.onWindowResize);
+    } else if (split) root.append(arena, right);
     else root.append(left, arena, right);
     if (options.svgLinks !== false) root.append(this.makeLinks());
     if (typeof ResizeObserver !== 'undefined') {
@@ -126,6 +206,37 @@ export class GameView {
 
   destroy(): void {
     this.resizeObs?.disconnect();
+    window.removeEventListener('resize', this.onWindowResize);
+  }
+
+  /** Skaliert die feste Spielfläche ins Fenster (Seitenverhältnis bleibt, zentriert). */
+  private fitStage(): void {
+    const stage = this.stage;
+    const spec = this.options.board;
+    if (!stage || !spec) return;
+    const w = this.root.clientWidth || window.innerWidth;
+    const h = this.root.clientHeight || window.innerHeight;
+    const scale = Math.min(w / spec.width, h / spec.height);
+    const x = (w - spec.width * scale) / 2;
+    const y = (h - spec.height * scale) / 2;
+    stage.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    const r = this.root.getBoundingClientRect();
+    this.stageTf = { scale, x: r.x + x, y: r.y + y };
+  }
+
+  hasBoardLayout(): boolean {
+    return !!this.stage;
+  }
+
+  /** Gegner-IDs in Platz-Reihenfolge (Platz i = Anschluss P(i+1) auf der Platine). */
+  opponentOrder(): number[] {
+    return [...this.opps.keys()];
+  }
+
+  /** Spielflächen → Viewport. Ohne feste Spielfläche: Identität. */
+  stageTransform(): StageTransform {
+    if (this.stage) this.fitStage();
+    return this.stageTf;
   }
 
   /* ---------- Ziellinien (wen ich anvisiere, wer mich angreift) ---------- */
@@ -208,9 +319,19 @@ export class GameView {
     }
   }
 
-  private makeOpp(p: PlayerState): OppCard {
+  private makeOpp(p: PlayerState, nodeLabel?: string, avatar?: string, index = 0): OppCard {
     const root = el('div', 'opp');
+    if (avatar) {
+      const img = el('img', 'avatar');
+      img.src = avatar;
+      img.alt = '';
+      // Gleiches Bild, je Gegner eigene Farbtönung – so bleiben sie unterscheidbar
+      img.style.filter = `hue-rotate(${(index * 137) % 360}deg) saturate(1.15)`;
+      root.classList.add('has-avatar');
+      root.append(img);
+    }
     const name = el('span', 'name', p.name);
+    if (nodeLabel) name.append(el('small', 'node-tag', nodeLabel));
     const badges = el('span', 'badges');
     const bar = el('span', 'bar');
     const fill = el('i');
@@ -257,6 +378,11 @@ export class GameView {
   /** Viewport-Koordinaten für die Hintergrund-Effekte. */
   boardRect(): DOMRect {
     return this.board.getBoundingClientRect();
+  }
+
+  /** HUD + Posteingang (für die Platine: dort keine Deko). */
+  arenaRect(): DOMRect {
+    return (this.board.closest('.arena') ?? this.board).getBoundingClientRect();
   }
 
   stackRect(): DOMRect {
@@ -415,4 +541,12 @@ function restartClass(e: Element, cls: string): void {
   e.classList.remove(cls);
   void (e as HTMLElement).offsetWidth; // Animation neu starten
   e.classList.add(cls);
+}
+
+function place(e: HTMLElement, r: DesignRect): void {
+  e.style.position = 'absolute';
+  e.style.left = `${r.x}px`;
+  e.style.top = `${r.y}px`;
+  e.style.width = `${r.width}px`;
+  e.style.height = `${r.height}px`;
 }

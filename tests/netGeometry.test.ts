@@ -53,6 +53,28 @@ describe('Platinen-Routing', () => {
     }
   });
 
+  it('Bahnen enden verteilt am Rand des Posteingangs, ohne Kreuzungen', () => {
+    for (const cards of [
+      [...column(60, 1), ...column(1100, 10)],
+      [...column(900, 1), ...column(1160, 10)],
+    ]) {
+      const hubX = cards[0].rect.x < 500 ? 700 : 400;
+      const entryRect = { x: hubX - 200, y: 200, width: 400, height: 460 };
+      const board = routeBoard({ ...opts, laneSpacing: 6, hub: { x: hubX, y: 430 }, cards, entryRect, entrySpread: 40 });
+      assertNoCrossings(board.traces.values());
+      const ys = new Set<number>();
+      for (const t of board.traces.values()) {
+        const end = t.path.points[t.path.points.length - 1];
+        expect([entryRect.x, entryRect.x + entryRect.width]).toContainEqual(end.x);
+        expect(end.y).toBeGreaterThan(entryRect.y);
+        expect(end.y).toBeLessThan(entryRect.y + entryRect.height);
+        ys.add(Math.round(end.y));
+      }
+      // über die Seite verteilt statt gebündelt
+      expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(250);
+    }
+  });
+
   it('Pakete laufen von Karte über den Chip zur Zielkarte', () => {
     const cards = [...column(60, 1), ...column(1100, 10)];
     const board = routeBoard({ ...opts, hub: { x: 700, y: 420 }, cards });

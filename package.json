@@ -18,5 +18,11 @@
     "vite": "^8.3.5",
     "vite-node": "^6.0.0",
     "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@fontsource/orbitron": "^5.3.0",
+    "@fontsource/share-tech-mono": "^5.3.0",
+    "pixi-filters": "^6.1.5",
+    "pixi.js": "^8.22.0"
   }
 }

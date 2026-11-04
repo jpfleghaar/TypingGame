@@ -24,7 +24,8 @@ export interface BotFieldOptions {
   maxWpm: number;
 }
 
-export const DEFAULT_BOT_FIELD: BotFieldOptions = { count: 18, minWpm: 25, maxWpm: 110 };
+/** Standard-Gegnerfeld: du gegen 10 Bots (11 Spieler – passend zu den Anschlüssen P1–P10 der Platine). */
+export const DEFAULT_BOT_FIELD: BotFieldOptions = { count: 10, minWpm: 25, maxWpm: 110 };
 
 const STRATEGY_WEIGHTS: [TargetStrategy, number][] = [
   ['random', 0.35],

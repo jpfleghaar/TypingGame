@@ -2,7 +2,7 @@
  * Balancing-Simulation: spielt viele Runden nur mit Bots und zeigt Rundendauer,
  * Platzierung nach Tempo und Angriffsstatistik.
  *
- *   npm run simulate              # 40 Runden, 19 Bots
+ *   npm run simulate              # 40 Runden, nur Bots (Standard-Spielerzahl)
  *   npm run simulate -- 100       # 100 Runden
  */
 declare const process: { argv: string[] };
@@ -10,6 +10,7 @@ import { results } from '../src/core';
 import type { WordData } from '../src/core/words/wordBank';
 import de from '../src/data/words/de.json';
 import { runHeadless } from '../src/runtime/headless';
+import { DEFAULT_BOT_FIELD } from '../src/controllers/botProfiles';
 
 const rounds = Number(process.argv[2] ?? 40);
 const durations: number[] = [];
@@ -26,7 +27,7 @@ for (let r = 0; r < rounds; r++) {
   const { state, profiles, durationMs } = runHeadless({
     seed,
     words: de as WordData,
-    field: { count: 19, minWpm: 25, maxWpm: 110 },
+    field: { ...DEFAULT_BOT_FIELD, count: DEFAULT_BOT_FIELD.count + 1 },
   });
   durations.push(durationMs / 60_000);
   for (const res of results(state)) {
@@ -50,7 +51,10 @@ for (let r = 0; r < rounds; r++) {
 
 const avg = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length;
 const pct = (a: number[], q: number) => [...a].sort((x, y) => x - y)[Math.floor(q * (a.length - 1))];
-const fmt = (m: number) => `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, '0')}`;
+const fmt = (m: number) => {
+  const sec = Math.round(m * 60);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+};
 
 console.log(`\n${rounds} Runden in ${((performance.now() - t0) / 1000).toFixed(1)} s simuliert\n`);
 console.log(

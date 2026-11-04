@@ -44,12 +44,30 @@ export interface ThemeTexts {
   koSelf: string;
   /** Label auf der Karte eines ausgeschiedenen Gegners. */
   koOpponent: string;
+  /** Optionale Bauteil-Bezeichnungen für die Gegner-Knoten (z. B. "RAM_01"). */
+  nodeLabels?: readonly string[];
+  /** Beschriftungen im Spiel (Hinweiszeile, Ziel-Zeile). */
+  ui: UiTexts;
+}
+
+export interface UiTexts {
+  /** Trenner zwischen Einträgen, z. B. "·" oder "//". */
+  sep: string;
+  /** Label vor dem Wort-Thema, z. B. "Thema" oder "Modus". */
+  modeLabel: string;
+  targetLabel: string;
+  /** Was die Tab-Taste macht, z. B. "Strategie" oder "Target". */
+  tabLabel: string;
+  /** Tasten als [TAB] statt als Tastenkappe. */
+  brackets: boolean;
 }
 
 /** Werte für die Platinen-/Datennetz-Darstellung. */
 export interface NetValues {
   grid: { size: number; alpha: number; driftPxPerSec: number };
   trace: {
+    /** Farbe der Leiterbahnen (Kupfer). */
+    color: Rgb;
     width: number;
     alpha: number;
     /** Länge der 45°-Abschrägung an Knicken. */
@@ -98,13 +116,28 @@ export interface NetValues {
     darkness: number;
   };
   combo: { frameWidth: number; pulseMs: number };
+  /** Nur WebGL-Renderer ('pcb', Hintergrundbild): Leuchten und Bahn-Zustände. */
+  gl: {
+    /** Bloom-Nachleuchten der Lichtebene. */
+    bloom: { threshold: number; scale: number; brightness: number; blur: number; quality: number };
+    /** Leuchtstärke der Bahn-Bündel im Bild je Zustand (0 = nur das Bild). */
+    glow: { normal: number; target: number; attacker: number; hot: number };
+    /** Abdunkelung der Bahn eines ausgeschiedenen Gegners (0..1). */
+    deadDarkness: number;
+    /** Abdunkelung des Hintergrundbilds im Spiel bzw. im Menü (0..1). */
+    dimGame: number;
+    dimMenu: number;
+    /** Randabdunkelung (Vignette). */
+    vignette: number;
+  };
+
 }
 
 export interface ThemeDef {
   id: ThemeId;
   label: string;
   /** Effekt-Engine: 'classic' (Sterne/Kometen) oder 'net' (Platine). */
-  renderer: 'classic' | 'net';
+  renderer: 'classic' | 'net' | 'pcb';
   /** Musikstil der AudioEngine. */
   music: 'classic' | 'datanet';
   palette: Palette;
@@ -114,7 +147,7 @@ export interface ThemeDef {
 
 const NET_DEFAULTS: NetValues = {
   grid: { size: 26, alpha: 0.05, driftPxPerSec: 3 },
-  trace: { width: 1.6, alpha: 0.22, chamfer: 10, laneSpacing: 9, padRadius: 3.2, hotBoost: 0.25 },
+  trace: { color: [150, 100, 36], width: 1.8, alpha: 0.42, chamfer: 10, laneSpacing: 9, padRadius: 3.2, hotBoost: 0.25 },
   chip: { size: 46, pins: 6 },
   traffic: {
     baseDensity: 0.6,
@@ -132,6 +165,15 @@ const NET_DEFAULTS: NetValues = {
   badges: { dotRadius: 2.4, maxDots: 12 },
   firewall: { maxDepth: 0.16, startAtAliveShare: 0.6, edgeWidth: 2, darkness: 0.86 },
   combo: { frameWidth: 2, pulseMs: 380 },
+  gl: {
+    bloom: { threshold: 0.12, scale: 1.5, brightness: 1, blur: 8, quality: 6 },
+    glow: { normal: 0, target: 0.7, attacker: 1, hot: 0.18 },
+    deadDarkness: 0.82,
+    dimGame: 0.12,
+    dimMenu: 0.5,
+    vignette: 0.5,
+  },
+
 };
 
 export const THEMES: Record<ThemeId, ThemeDef> = {
@@ -155,28 +197,36 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       stackBg: [14, 18, 27],
       stackBgAlpha: 1,
     },
-    texts: { inbox: '', incoming: 'Müll', garbageTag: '', koSelf: 'K.O.!', koOpponent: 'K.O.' },
+    texts: {
+      inbox: '',
+      incoming: 'Müll',
+      garbageTag: '',
+      koSelf: 'K.O.!',
+      koOpponent: 'K.O.',
+      ui: { sep: '·', modeLabel: 'Thema', targetLabel: 'Ziel', tabLabel: 'Strategie', brackets: false },
+    },
     net: NET_DEFAULTS,
   },
   datanet: {
     id: 'datanet',
-    label: 'Datennetz',
-    renderer: 'net',
+    label: 'Platine',
+    renderer: 'pcb',
     music: 'datanet',
+    // Kupfer-/Bernstein-Platine auf dunklem Schiefer (nach Vorlage-Bild)
     palette: {
-      bg: [7, 8, 16],
-      panel: [14, 16, 32],
-      panel2: [21, 24, 48],
-      line: [38, 42, 78],
-      text: [232, 236, 255],
-      muted: [128, 136, 176],
-      good: [52, 227, 255],
-      danger: [255, 61, 154],
-      warn: [255, 200, 87],
-      garbage: [255, 150, 200],
-      word: [196, 202, 232],
-      stackBg: [6, 7, 15],
-      stackBgAlpha: 0.84,
+      bg: [9, 12, 18],
+      panel: [16, 20, 28],
+      panel2: [23, 28, 38],
+      line: [48, 52, 60],
+      text: [242, 238, 228],
+      muted: [140, 138, 128],
+      good: [255, 178, 48],
+      danger: [255, 70, 58],
+      warn: [255, 214, 110],
+      garbage: [255, 120, 104],
+      word: [210, 206, 194],
+      stackBg: [7, 9, 14],
+      stackBgAlpha: 0.86,
     },
     texts: {
       inbox: 'Posteingang',
@@ -184,6 +234,12 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
       garbageTag: 'SPAM',
       koSelf: 'Postfach voll',
       koOpponent: 'Verbindung getrennt',
+      ui: { sep: '//', modeLabel: 'Modus', targetLabel: 'Ziel', tabLabel: 'Target', brackets: true },
+      nodeLabels: [
+        'RAM_01', 'CACHE_E1', 'MPI_AT', 'BIOS_ROM', 'GPU_CORE', 'PCI_BUS', 'PHY_NET', 'VRAM_B', 'CLOCK_GEN',
+        'DSP_AUDIO', 'SATA_CTRL', 'USB_HOST', 'TPM_2.0', 'DMA_CTRL', 'VRM_POWER', 'NVME_SSD', 'GPIO_HUB', 'SPI_FLASH',
+        'I2C_BUS', 'UART_0', 'ETH_PHY', 'PLL_1',
+      ],
     },
     net: NET_DEFAULTS,
   },
