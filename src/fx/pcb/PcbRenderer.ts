@@ -578,7 +578,8 @@ export class PcbRenderer implements ThemeRenderer {
     if (this.stack && me?.alive) {
       const s = this.stack;
       const combo = me.combo;
-      const k = combo >= 10 ? 1 : combo >= 6 ? 0.7 : combo >= 3 ? 0.45 : combo >= 1 ? 0.2 : 0;
+      // Gleiche Stufen wie die Punkte-Tempostufen (10 / 20)
+      const k = combo >= 20 ? 1 : combo >= 10 ? 0.7 : combo >= 5 ? 0.45 : combo >= 1 ? 0.2 : 0;
       if (k > 0) {
         f.roundRect(s.x - 4, s.y - 4, s.width + 8, s.height + 8, 9).stroke({
           width: n.combo.frameWidth + k * 1.5,

@@ -36,7 +36,7 @@ export function renderResults(
     const tw = el('div', 'table-wrap');
     const table = el('table');
     const head = el('tr');
-    for (const h of ['Platz', 'Name', 'WPM', 'Genauigkeit', 'Angriffe ges.', 'Müll ges.', 'Angriffe erh.', 'Müll erh.', 'Abgewehrt', 'K.O.s', 'Abzeichen', 'Max. Combo', 'Zeit']) {
+    for (const h of ['Platz', 'Name', 'WPM', 'Genauigkeit', 'Max. Combo', 'Punkte verdient', 'für Angriff', 'für Abwehr', 'verfallen', 'Müll ges.', 'Müll erh.', 'K.O.s', 'Abzeichen', 'Zeit']) {
       head.append(el('th', undefined, h));
     }
     table.append(head);
@@ -47,14 +47,15 @@ export function renderResults(
         r.name,
         r.wpm.toFixed(0),
         `${(r.accuracy * 100).toFixed(1)} %`,
-        r.attacksSent,
+        r.maxCombo,
+        r.pointsEarned,
+        r.pointsAttack,
+        r.pointsDefense,
+        r.pointsLost,
         r.garbageSent,
-        r.attacksReceived,
         r.garbageReceived,
-        r.garbageCancelled,
         r.kos,
         r.badges,
-        r.maxCombo,
         formatTime(r.survivedMs),
       ];
       for (const c of cells) tr.append(el('td', undefined, String(c)));
@@ -92,7 +93,25 @@ export function renderResults(
   menu.addEventListener('click', actions.menu);
   act.append(again, ...(info.practice ? [] : [same]), menu, el('span', 'keys', 'Enter = Neue Runde · Esc = Menü'));
 
-  wrap.append(h1, sub, act, ...(info.practice ? [] : [tableCard]), probCard);
+  // Deine Punkte-Bilanz auf einen Blick
+  const pts = el('div', 'card points-summary');
+  pts.append(el('h2', undefined, 'Deine Combo & Punkte'));
+  const grid = el('div', 'points-grid');
+  const tile = (label: string, value: number, cls = '') => {
+    const t = el('div', `pt-tile ${cls}`);
+    t.append(el('b', undefined, String(value)), el('small', undefined, label));
+    grid.append(t);
+  };
+  tile('Max. Combo', mine.maxCombo, 'combo');
+  tile('Punkte verdient', mine.pointsEarned);
+  if (!info.practice) {
+    tile('für Angriff ausgegeben', mine.pointsAttack);
+    tile('für Abwehr ausgegeben', mine.pointsDefense);
+  }
+  tile('verfallen (Maximum voll)', mine.pointsLost, mine.pointsLost > 0 ? 'lost' : '');
+  pts.append(grid);
+
+  wrap.append(h1, sub, act, pts, ...(info.practice ? [] : [tableCard]), probCard);
   root.append(wrap);
   root.onkeydown = null;
   again.focus();

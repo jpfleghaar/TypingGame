@@ -33,7 +33,18 @@ export function idle(state: GameState, ticks: number) {
 export const QUIET: GameConfig = {
   ...DEFAULT_CONFIG,
   initialWords: 12,
-  // Angriffe sofort senden: Diese Tests prüfen Müll-Regeln, nicht das Laden per Leertaste
-  attack: { autoSendIntervalMs: 0 },
   spawn: { ...DEFAULT_CONFIG.spawn, startIntervalMs: 1e9, endIntervalMs: 1e9 },
 };
+
+/** Gibt einem Spieler Punkte und greift sofort mit Enter (SEND_ATTACK) an. */
+export function attackWith(state: GameState, playerId: number, points: number) {
+  state.players[playerId].points = points;
+  return step(state, BANK, [{ type: 'SEND_ATTACK', playerId }]);
+}
+
+/** Tippt `n` Wörter fehlerfrei und sammelt alle Events. */
+export function typeWords(state: GameState, playerId: number, n: number) {
+  const events = [];
+  for (let i = 0; i < n; i++) events.push(...typeWord(state, playerId));
+  return events;
+}

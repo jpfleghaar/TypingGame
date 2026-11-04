@@ -1,6 +1,6 @@
 # Typing Royale
 
-Ein Tipp-Battle-Royale im Browser für 11 Teilnehmer (du + 10 Bots). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst Wörter, baust Combos auf und schickst Müllwörter an deine Gegner. Wer überläuft, ist raus.
+Ein Tipp-Battle-Royale im Browser für 11 Teilnehmer (du + 10 Bots). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst fehlerfrei, sammelst Punkte und gibst sie für Angriffe (Müllwörter an deine Gegner) oder Abwehr aus. Wer überläuft, ist raus.
 
 ## Starten
 
@@ -27,8 +27,9 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 | Taste | Wirkung |
 |---|---|
 | Buchstaben | Das **unterste** Wort tippen. Groß-/Kleinschreibung zählt. |
-| `Leertaste` | Ein Wort aus dem Angriffs-Pool sofort abschicken (sonst automatisch eins alle 5 s) |
-| `Tab` | Spam abwehren, wenn welcher kommt und du Combo hast (1 Combo-Punkt pro Wort) – sonst Ziel-Strategie wechseln: Zufall → Angreifer → Schwache → K.O.-Jäger |
+| `Enter` | Angriff: **alle** Punkte ausgeben, 1 Müllwort pro Punkt an das aktuelle Ziel |
+| `Tab` | Spam abwehren, wenn welcher kommt und du Punkte hast (1 Punkt pro Wort) – sonst Ziel-Strategie wechseln: Zufall → Angreifer → Schwache → K.O.-Jäger |
+| `Leertaste` | keine Funktion (damit niemand aus Gewohnheit angreift) |
 | `1`–`5`, `6`–`0` | Gegner direkt anvisieren: links von oben 1–5, rechts von oben 6–9 und 0 (Strategie „Manuell“) |
 | `F4` | Ton an/aus |
 | `F2` | Debug-Anzeige (Tick-Rate, eingehender Müll, Bot-Profile) |
@@ -39,10 +40,12 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 - Vor jeder Runde läuft ein 5-Sekunden-Countdown (`countdownSeconds` in der Config). Tastendrücke zählen erst ab „Los!“.
 - Dein Stapel fasst 12 Wörter. Regelmäßig kommt oben ein neues Wort dazu, und das Tempo steigt im Lauf der Runde. Ein 13. Wort bedeutet K.O. Tippst du deinen Stapel leer, bekommst du sofort das nächste Wort.
 - Alle Spieler bekommen dieselbe Wortfolge, jeder in seinem eigenen Tempo. Die Müllwörter sind für jeden Spieler zufällig.
-- **Combo:** Jedes fehlerfreie Wort erhöht sie. Ein Tippfehler setzt sie auf 0, das Wort bleibt stehen.
-- **Angriffe:** Bei Combo 3, 6 und 10 wird ein Angriff mit 1, 2 bzw. 3 Müllwörtern geladen, danach alle 8 Wörter 2. Die Wörter kommen in einen Pool: Jede Leertaste schickt ein Wort daraus, ohne Leertaste geht alle 5 s automatisch eins raus (`attack.autoSendIntervalMs`).
+- **Punkte (sichere Währung):** Fehlerfreie Wörter bringen Punkte, höchstens 8 (`points.max`). Einmal verdiente Punkte gehen nicht verloren, auch nicht durch Tippfehler. Was über das Maximum hinaus verdient wird, verfällt; die Punkte-Leiste rechts neben dem Posteingang zeigt dann „MAX“. Darunter zeigt ein kleiner Balken den Fortschritt zum nächsten Punkt.
+- **Combo (Tempo):** +1 für jedes Wort ganz ohne Tippfehler; ein Wort mit Fehler zählt nicht. Die Combo bestimmt, wie viele Wörter ein Punkt braucht (`points.rates`): Combo 0–9 → 3 Wörter, 10–19 → 2 Wörter, ab 20 → 1 Wort. Ein Tippfehler setzt die Combo **und** den Fortschritt zum nächsten Punkt auf 0, gesammelte Punkte bleiben. Punkte ausgeben ändert die Combo nicht. Die Combo leuchtet als Rahmen um den Posteingang (Stufen 1 / 5 / 10 / 20).
+- **Angriff (`Enter`):** Gibt alle Punkte aus und schickt pro Punkt 1 Müllwort (`attack.garbagePerPoint`, plus Abzeichen-Bonus) an das aktuelle Ziel. Eingehender Müll wird dabei **nicht** verrechnet.
 - **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müll sind die **längsten Wörter aus dem Stapel des Angreifers**: Sie werden verschoben, verlassen also seinen Stapel (das aktive Wort bleibt). Hat er zu wenige, wird mit langen Listenwörtern aufgefüllt. Erst im Finale (2 Spieler übrig) kommt gemischte Groß-/Kleinschreibung dazu.
-- **Abwehr:** Mit `Tab` wehrst du eingehenden Müll ab; jedes Wort kostet 1 Combo-Punkt (`defense.comboCostPerWord`). Außerdem verrechnet ein eigener Angriff zuerst den Müll, der gerade zu dir unterwegs ist. Nur der Rest geht an dein Ziel.
+- **Abwehr (`Tab`):** Wehrt eingehenden Müll ab, 1 Punkt pro Wort (`defense.pointsPerWord`), älteste Wörter zuerst. Beim K.O. ist der Spieler raus, seine Punkte spielen dann keine Rolle mehr.
+- **Auswertung:** Am Ende stehen Max. Combo, verdiente Punkte, für Angriff bzw. Abwehr ausgegebene und verfallene Punkte.
 - **K.O.-Abzeichen:** Wer jemanden K.O. schickt (d. h. in den letzten 10 s Müll bei ihm gelandet hat), bekommt dessen Abzeichen + 1. Ab 2 / 6 / 14 / 30 Abzeichen sind deine Angriffe um 25 / 50 / 75 / 100 % stärker.
 - **Lernmodus:** Unter „Sprache“ gibt es „Deutsch lernen“ und „Englisch lernen“. Du tippst Wörter in der Lernsprache, die Übersetzung steht klein daneben. Wahlweise im Battle Royale oder „In Ruhe“ (ohne Gegner, ohne Müll, langsameres Tempo).
 - **Problemwörter:** Die Auswertung zeigt Wörter, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast.
@@ -55,9 +58,9 @@ Alles wird synthetisch mit der Web Audio API erzeugt, ohne Audiodateien ([`src/a
 
 ## Balancing
 
-Alle Werte stehen zentral in [`src/core/config.ts`](src/core/config.ts): Spawn-Tempo und Rampe, Stapelhöhe, Combo-Stufen, Müllmenge, Warnzeit, Abzeichen-Bonus, Zielwahl und Problemwort-Erkennung. Nach Änderungen zeigt `npm run simulate`, wie sich Rundendauer und Platzierungen verschieben.
+Alle Werte stehen zentral in [`src/core/config.ts`](src/core/config.ts): Spawn-Tempo und Rampe, Stapelhöhe, Punkte (Maximum, Wörter pro Punkt je Combo), Müll pro Punkt, Abwehrkosten, Warnzeit, Abzeichen-Bonus, Zielwahl und Problemwort-Erkennung. Nach Änderungen zeigt `npm run simulate`, wie sich Rundendauer und Platzierungen verschieben.
 
-Stand der Simulation (60 Runden, 11 Spieler, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 5:00 (alle zwischen 4:10 und 5:55). Spieler unter 30 WPM überleben etwa 1:10, mit 45–59 WPM etwa 2:55, mit 60–75 WPM etwa 3:30. Bots schicken Wörter aus ihrem Pool einzeln mit profilabhängiger Reaktionszeit ab und wehren mit 20–85 % Wahrscheinlichkeit ab.
+Stand der Simulation (40 Runden, 11 Spieler, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:05 (2:30 bis 4:45, 95 % im Zielbereich 3–6 min). Bots entscheiden selbst: Sie wehren kurz vor dem Einschlag ab (immer, wenn es eng wird, sonst mit 20–85 % Wahrscheinlichkeit), sparen, solange Müll unterwegs ist oder der eigene Stapel voll wird, und greifen ab ihrer persönlichen Schwelle (2–6 Punkte), am Maximum oder für einen Gnadenstoß an.
 
 Die Spielerzahl steht zentral in `DEFAULT_BOT_FIELD` ([`src/controllers/botProfiles.ts`](src/controllers/botProfiles.ts)).
 
@@ -69,7 +72,7 @@ src/
 │  ├─ config.ts     alle Balancing-Werte
 │  ├─ types.ts      State, Commands (Eingaben), Events (Ausgaben)
 │  ├─ game.ts       createGame() und step(state, bank, commands) → events
-│  ├─ garbage.ts    Combo → Müll, Abzeichen-Bonus, Verrechnung
+│  ├─ garbage.ts    Wörter pro Punkt, Abzeichen-Bonus, Abwehr-Verrechnung
 │  ├─ targeting.ts  die vier Ziel-Strategien
 │  ├─ stats.ts      WPM, Genauigkeit, Endübersicht, Problemwörter
 │  ├─ rng.ts        Zufall aus einem Seed (mulberry32)

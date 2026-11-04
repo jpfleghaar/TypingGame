@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyBadgeBonus, cancelIncoming, createRng, DEFAULT_CONFIG, msToTicks, type IncomingGarbage } from '../src/core';
-import { idle, newGame, QUIET, typeWord } from './helpers';
+import { attackWith, idle, newGame, QUIET } from './helpers';
 
 const pkt = (id: number, from: number, amount: number, arriveTick: number): IncomingGarbage => ({
   id,
@@ -10,8 +10,8 @@ const pkt = (id: number, from: number, amount: number, arriveTick: number): Inco
   arriveTick,
 });
 
-describe('cancelIncoming', () => {
-  it('verrechnet ältesten Müll zuerst und gibt den Rest zurück', () => {
+describe('cancelIncoming (Abwehr)', () => {
+  it('zieht ältesten Müll zuerst ab und gibt den Rest zurück', () => {
     const incoming = [pkt(2, 5, 2, 200), pkt(1, 4, 1, 100)];
     const r = cancelIncoming(incoming, 2);
     expect(r.remaining).toBe(0);
@@ -37,7 +37,7 @@ describe('cancelIncoming', () => {
 describe('Müll im Spiel', () => {
   it('landet nach der Warnzeit direkt über dem aktiven Wort', () => {
     const s = newGame(2, 3, { ...QUIET, initialWords: 4 });
-    for (let i = 0; i < 3; i++) typeWord(s, 0);
+    attackWith(s, 0, 1);
     const victim = s.players[1];
     const active = victim.stack[0];
     const before = victim.stack.length;
@@ -50,24 +50,20 @@ describe('Müll im Spiel', () => {
     expect(victim.incoming).toHaveLength(0);
   });
 
-  it('eigener Angriff verrechnet erst eingehenden Müll', () => {
+  it('eigener Angriff verrechnet eingehenden Müll NICHT (dafür ist Tab da)', () => {
     const s = newGame(2, 3, QUIET);
-    // P1 schickt 1 Müll an P0
-    for (let i = 0; i < 3; i++) typeWord(s, 1);
+    attackWith(s, 1, 1); // P1 schickt 1 Müll an P0
     expect(s.players[0].incoming[0].amount).toBe(1);
-    // P0 kontert mit einem eigenen Angriff (1) -> neutralisiert, nichts geht raus
-    typeWord(s, 0);
-    typeWord(s, 0);
-    const events = typeWord(s, 0);
-    expect(events.some((e) => e.type === 'GARBAGE_CANCELLED')).toBe(true);
-    expect(events.some((e) => e.type === 'ATTACK_SENT')).toBe(false);
-    expect(s.players[0].incoming).toHaveLength(0);
-    expect(s.players[1].incoming).toHaveLength(0);
+    const events = attackWith(s, 0, 1);
+    expect(events.some((e) => e.type === 'GARBAGE_CANCELLED')).toBe(false);
+    expect(events.some((e) => e.type === 'ATTACK_SENT')).toBe(true);
+    expect(s.players[0].incoming).toHaveLength(1);
+    expect(s.players[1].incoming).toHaveLength(1);
   });
 
   it('Stapel-Überlauf durch Müll führt zum K.O.', () => {
     const s = newGame(2, 3, QUIET); // Stapel startet mit 12 Wörtern = voll
-    for (let i = 0; i < 3; i++) typeWord(s, 0);
+    attackWith(s, 0, 1);
     idle(s, msToTicks(DEFAULT_CONFIG.garbage.warningMs, DEFAULT_CONFIG) + 1);
     expect(s.players[1].alive).toBe(false);
     expect(s.finished).toBe(true);
@@ -101,13 +97,10 @@ describe('Neues Müll-Konzept: eigene längste Wörter werden verschoben', () =>
     const s = newGame(3, 8, QUIET); // 3 Spieler: noch kein Finale
     s.players[0].targetId = 1;
     s.players[0].strategy = 'manual';
-    typeWord(s, 0);
-    typeWord(s, 0);
-    // Erwartung: nach dem 3. Wort ist stack[0] aktiv, von stack[1..] das längste geht raus
-    const after = s.players[0].stack.slice(1);
-    const candidates = after.slice(1);
+    // Erwartung: stack[0] ist aktiv und bleibt, von stack[1..] geht das längste raus
+    const candidates = s.players[0].stack.slice(1);
     const longest = [...candidates].sort((a, b) => b.text.length - a.text.length)[0];
-    typeWord(s, 0);
+    attackWith(s, 0, 1);
     const pkt = s.players[1].incoming[0];
     expect(pkt.words).toEqual([longest.text]);
     expect(s.players[0].stack.some((w) => w.id === longest.id)).toBe(false);
@@ -120,10 +113,11 @@ describe('Neues Müll-Konzept: eigene längste Wörter werden verschoben', () =>
     const s = newGame(3, 8, { ...QUIET, initialWords: 3 });
     s.players[0].targetId = 1;
     s.players[0].strategy = 'manual';
-    for (let i = 0; i < 3; i++) typeWord(s, 0); // Stapel ist danach leer
+    attackWith(s, 0, 4); // nur 2 Wörter außer dem aktiven: 2 aus dem Stapel, 2 aufgefüllt
     const pkt = s.players[1].incoming[0];
-    expect(pkt.words).toHaveLength(1);
-    expect(pkt.words![0].length).toBeGreaterThan(5);
+    expect(pkt.words).toHaveLength(4);
+    expect(s.players[0].stack).toHaveLength(1);
+    expect(pkt.words![3].length).toBeGreaterThan(5);
   });
 
   it('Groß-/Kleinschreibung wird erst im Finale (2 Spieler) gemischt', () => {
@@ -131,7 +125,7 @@ describe('Neues Müll-Konzept: eigene längste Wörter werden verschoben', () =>
       const s = newGame(players, 8, QUIET);
       s.players[0].targetId = 1;
       s.players[0].strategy = 'manual';
-      for (let i = 0; i < 3; i++) typeWord(s, 0);
+      attackWith(s, 0, 1);
       const sent = s.players[1].incoming[0].words![0];
       idle(s, warn());
       const arrived = s.players[1].stack[1].text;
@@ -141,7 +135,7 @@ describe('Neues Müll-Konzept: eigene längste Wörter werden verschoben', () =>
     }
   });
 
-  it('Verrechnung verbraucht auch die mitgeschickten Wörter', () => {
+  it('Abwehr verbraucht auch die mitgeschickten Wörter', () => {
     const incoming = [{ id: 1, from: 4, amount: 3, words: ['a', 'b', 'c'], sentTick: 0, arriveTick: 10 }];
     cancelIncoming(incoming, 2);
     expect(incoming[0].amount).toBe(1);

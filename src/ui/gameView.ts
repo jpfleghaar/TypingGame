@@ -1,4 +1,4 @@
-import { msToTicks, pendingGarbage, selectWordsToSend, ticksToMs, wordsLeavingWithAttack, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
+import { msToTicks, pendingGarbage, selectWordsToSend, ticksToMs, wordsLeavingWithAttack, wordsPerPoint, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
 import type { FrameInfo } from '../runtime/GameRunner';
 import { el, formatTime } from './labels';
 import { motionReduced } from './motion';
@@ -79,6 +79,7 @@ export class GameView {
   private audioEl = el('span', 'audio-status');
   private warnCount = el('span', 'warn-count');
   private hud = {
+    points: el('b'),
     combo: el('b'),
     wpm: el('b'),
     alive: el('b'),
@@ -100,11 +101,17 @@ export class GameView {
   private lastAttackFrom = new Map<number, number>();
   private attackers = new Set<number>();
   private resizeObs: ResizeObserver | null = null;
-  /** Aufforderungen unter dem Posteingang: Angriff senden (Leertaste) / abwehren (Tab). */
+  /** Aufforderungen unter dem Posteingang: Angriff senden (Enter) / abwehren (Tab). */
   private prompts = el('div', 'prompts');
   private sendChip = el('div', 'prompt send');
   private sendText = el('span');
-  private sendBar = el('i');
+  /** Punkte-Leiste neben dem Posteingang: Segmente, Zähler, Fortschritt zum nächsten Punkt. */
+  private pointsEl = el('div', 'points');
+  private pointsCount = el('b', 'points-count');
+  private pointsSegs: HTMLElement[] = [];
+  private pointsProgFill = el('i');
+  private pointsProgText = el('small', 'points-rate');
+  private pointsShown = '';
   private defendChip = el('div', 'prompt defend');
   private defendText = el('span');
   private stage: HTMLElement | null = null;
@@ -146,8 +153,16 @@ export class GameView {
       s.append(b, el('small', undefined, label));
       return s;
     };
+    const comboStat = stat('Combo', this.hud.combo, 'combo');
+    comboStat.title = 'Fehlerfreie Wörter in Folge – bestimmt, wie schnell Punkte kommen. Ein Tippfehler setzt nur die Combo zurück, nicht die Punkte.';
+    const pointsStat = stat('Punkte', this.hud.points, 'points-stat');
+    pointsStat.title = 'Deine Punkte (sicher): Enter = Angriff, Tab = Abwehr';
+    if (others.length > 0) {
+      hud.classList.add('with-points');
+      hud.append(pointsStat);
+    }
     hud.append(
-      stat('Combo', this.hud.combo, 'combo'),
+      comboStat,
       stat('WPM', this.hud.wpm),
       stat(others.length ? 'Im Spiel' : 'Thema', this.hud.alive),
       stat('Zeit', this.hud.time),
@@ -170,6 +185,11 @@ export class GameView {
     warnWrap.style.display = 'grid';
     warnWrap.append(warn, this.warnCount);
     board.append(warnWrap, this.stackEl);
+    // Punkte-Leiste nur, wenn es Gegner gibt (ohne Gegner gibt es nichts anzugreifen/abzuwehren)
+    if (others.length > 0) {
+      board.classList.add('with-points');
+      board.append(this.makePoints(state));
+    }
 
     const hint = el('div', 'hint');
     const key = (k: string) => el('kbd', undefined, tx.brackets ? `[${k.toUpperCase()}]` : k);
@@ -185,7 +205,7 @@ export class GameView {
       tone.blur();
     });
     hint.append(`${tx.modeLabel}: ${themeLabel}`, sep(), key('Tab'), ` ${tx.tabLabel}`, sep());
-    if (others.length > 0) hint.append(key('Space'), ' Senden', sep());
+    if (others.length > 0) hint.append(key('Enter'), ' Senden', sep());
     if (others.length > 0) hint.append(key(others.length >= 10 ? '1–0' : `1–${others.length}`), ' Direkt', sep());
     // "Menü" anklickbar (fragt im Spiel nach, ob man aufgeben will) – wie Esc
     const menuBtn = el('button', 'tone-toggle menu-btn');
@@ -391,6 +411,11 @@ export class GameView {
         this.dissolve(e.word.id);
       } else if (e.type === 'GARBAGE_CANCELLED' && e.playerId === this.humanId) {
         restartClass(this.warnEl, 'cancel');
+      } else if (e.type === 'POINT_LOST' && e.playerId === this.humanId) {
+        restartClass(this.pointsEl, 'overflow'); // Punkt verdient, aber verfallen: Maximum voll
+      } else if (e.type === 'POINT_EARNED' && e.playerId === this.humanId) {
+        restartClass(this.pointsEl, 'gain');
+        this.popPoint();
       } else if (e.type === 'BADGES_GAINED' && e.playerId === this.humanId) {
         restartClass(this.badgesEl, 'pop');
       }
@@ -519,8 +544,10 @@ export class GameView {
       this.activeCursor = me.cursor;
     }
     this.stackEl.classList.toggle('danger', me.stack.length >= state.config.stackMax - 2);
-    // Grün: Wörter, die der geladene Angriff gerade mitnehmen würde
-    const sending = me.alive ? new Set(selectWordsToSend(me, wordsLeavingWithAttack(me)).map((w) => w.id)) : new Set<number>();
+    // Markiert: Wörter, die ein Angriff mit Enter jetzt mitnehmen würde
+    const sending = me.alive && this.opps.size > 0
+      ? new Set(selectWordsToSend(me, wordsLeavingWithAttack(me, state.config)).map((w) => w.id))
+      : new Set<number>();
     for (const [id, row] of this.rows) row.classList.toggle('to-send', sending.has(id));
   }
 
@@ -547,11 +574,49 @@ export class GameView {
     this.activeCursor = -1;
   }
 
+  /** Kurzes "+1 Punkt" über der Punkte-Leiste, damit klar ist, wann ein Punkt dazukommt. */
+  private popPoint(): void {
+    if (this.pointsSegs.length === 0) return;
+    const pop = el('span', 'points-pop', '+1 Punkt');
+    this.pointsEl.append(pop);
+    setTimeout(() => pop.remove(), 900);
+  }
+
+  private makePoints(state: GameState): HTMLElement {
+    const max = state.config.points.max;
+    const label = el('small', 'points-label', 'Punkte');
+    const segs = el('div', 'points-segs');
+    for (let i = 0; i < max; i++) {
+      const seg = el('i');
+      this.pointsSegs.push(seg);
+      segs.append(seg);
+    }
+    const prog = el('div', 'points-prog');
+    prog.title = 'Fortschritt zum nächsten Punkt';
+    prog.append(this.pointsProgFill);
+    this.pointsEl.title = `Punkte (max. ${max}): Enter = Angriff, Tab = Abwehr`;
+    this.pointsEl.append(label, this.pointsCount, segs, prog, this.pointsProgText);
+    return this.pointsEl;
+  }
+
+  private renderPoints(state: GameState, me: PlayerState): void {
+    if (this.pointsSegs.length === 0) return;
+    const max = state.config.points.max;
+    const need = wordsPerPoint(me.combo, state.config);
+    const key = `${me.points}|${me.pointProgress}|${need}|${me.alive}`;
+    if (key === this.pointsShown) return;
+    this.pointsShown = key;
+    const full = me.points >= max;
+    this.pointsEl.classList.toggle('max', full);
+    this.pointsCount.textContent = full ? 'MAX' : `${me.points}/${max}`;
+    this.pointsSegs.forEach((seg, i) => seg.classList.toggle('on', i < me.points));
+    this.pointsProgFill.style.width = `${(Math.min(me.pointProgress, need) / need) * 100}%`;
+    this.pointsProgText.textContent = full ? 'voll – Rest verfällt' : `${me.pointProgress}/${need} Wörter`;
+  }
+
   private makePrompts(brackets: boolean): HTMLElement {
     const k = (t: string) => el('kbd', undefined, brackets ? `[${t.toUpperCase()}]` : t);
-    const bar = el('span', 'prompt-bar');
-    bar.append(this.sendBar);
-    this.sendChip.append(k('Space'), this.sendText, bar);
+    this.sendChip.append(k('Enter'), this.sendText);
     this.defendChip.append(k('Tab'), this.defendText);
     this.sendChip.hidden = true;
     this.defendChip.hidden = true;
@@ -559,31 +624,33 @@ export class GameView {
     return this.prompts;
   }
 
-  /** Aufforderungen aktualisieren: geladener Angriff, mögliche Abwehr. */
+  /** Aufforderungen: Angriff mit allen Punkten, mögliche Abwehr. */
   private renderPrompts(state: GameState, me: PlayerState): void {
-    const pa = me.alive ? me.pendingAttack : null;
-    this.sendChip.hidden = !pa;
-    if (pa) {
-      // Pool-Größe; Balken läuft bis zum nächsten automatisch gesendeten Wort
-      this.sendText.textContent = ` Senden · ${pa.amount} bereit`;
-      const total = Math.max(1, msToTicks(state.config.attack.autoSendIntervalMs, state.config));
-      const left = Math.max(0, pa.autoTick - state.tick);
-      this.sendBar.style.width = `${(left / total) * 100}%`;
+    const pts = me.alive && this.opps.size > 0 ? me.points : 0;
+    this.sendChip.hidden = pts === 0;
+    if (pts > 0) {
+      const n = wordsLeavingWithAttack(me, state.config);
+      const full = me.points >= state.config.points.max;
+      this.sendChip.classList.toggle('full', full);
+      this.sendText.textContent = ` Angriff · ${pts} ${pts === 1 ? 'Punkt' : 'Punkte'} → ${n} ${n === 1 ? 'Wort' : 'Wörter'}${full ? ' · MAX' : ''}`;
     }
     const incoming = me.alive ? pendingGarbage(me.incoming) : 0;
-    const cost = state.config.defense.comboCostPerWord;
+    const cost = state.config.defense.pointsPerWord;
     this.defendChip.hidden = incoming === 0;
     if (incoming > 0) {
-      const can = Math.min(incoming, Math.floor(me.combo / cost));
+      const can = Math.min(incoming, Math.floor(me.points / cost));
       this.defendChip.classList.toggle('ready', can > 0);
-      this.defendText.textContent =
-        can > 0 ? ` Abwehren ${can}× (−${can * cost} Combo)` : ' Keine Combo zum Abwehren';
+      const unit = (x: number) => (x === 1 ? 'Punkt' : 'Punkte');
+      this.defendText.textContent = can > 0 ? ` Abwehren ${can}× (−${can * cost} ${unit(can * cost)})` : ' Keine Punkte zum Abwehren';
     }
   }
 
   private renderHud(state: GameState, me: PlayerState): void {
     this.renderPrompts(state, me);
+    this.renderPoints(state, me);
     this.hud.combo.textContent = String(me.combo);
+    const maxP = state.config.points.max;
+    this.hud.points.textContent = me.points >= maxP ? `${me.points}/${maxP} MAX` : `${me.points}/${maxP}`;
     this.hud.wpm.textContent = wpm(state, me).toFixed(0);
     if (state.players.length > 1) {
       this.hud.alive.textContent = `${state.players.filter((p) => p.alive).length}/${state.players.length}`;

@@ -2,7 +2,7 @@ import { DEFAULT_CONFIG, THEME_MIXED, THEME_RANDOM } from '../core';
 import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
 import { VOCAB, WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
 import type { AvSettings } from './avSettings';
-import { el } from './labels';
+import { el, pointRatesText, pointsLabel } from './labels';
 import { systemPrefersReducedMotion } from './motion';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
@@ -255,20 +255,22 @@ export function renderMenu(
 
   /* --- Steuerung --- */
   const cfg = DEFAULT_CONFIG;
-  const combos = cfg.combo.thresholds.map((t) => t.combo).join(', ');
   const help = el('div', 'card controls');
   help.append(el('h2', undefined, 'Steuerung'));
   const intro = el('div', 'controls-intro');
   intro.innerHTML = `
     <p><b>Ziel:</b> Halte deinen Posteingang leer. Neue Wörter kommen oben dazu – sind mehr als ${cfg.stackMax} drin,
     bist du raus. Wer als Letzter übrig ist, gewinnt.</p>
-    <p><b>Tippen:</b> Tippe immer das <b>unterste, große Wort</b>. Groß-/Kleinschreibung zählt, Enter brauchst du nicht.
-    Ein Tippfehler setzt deine Combo zurück, das Wort bleibt stehen – einfach mit dem richtigen Buchstaben weiter.</p>
-    <p><b>Angreifen:</b> Fehlerfreie Wörter bauen deine Combo auf. Bei Combo ${combos} wird ein Angriff <b>geladen</b>:
-    <kbd>Leertaste</kbd> schickt <b>ein Wort</b> daraus, sonst geht alle ${cfg.attack.autoSendIntervalMs / 1000} s automatisch eins raus. Dabei wandern deine
-    <b>längsten Wörter</b> als Spam zu deinem Ziel und verschwinden aus deinem Posteingang – welche das sind, ist <b style="color: var(--send)">bernsteinfarben</b> markiert.</p>
-    <p><b>Abwehren:</b> Kommt Spam auf dich zu, erscheint <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
-    ${cfg.defense.comboCostPerWord} ${cfg.defense.comboCostPerWord === 1 ? 'Combo-Punkt' : 'Combo-Punkte'}. Ein abgeschickter Angriff verrechnet außerdem zuerst den Spam, der gerade zu dir unterwegs ist.</p>`;
+    <p><b>Tippen:</b> Tippe immer das <b>unterste, große Wort</b>. Groß-/Kleinschreibung zählt. Bestätigen musst du nichts, ein fertiges Wort verschwindet von selbst.
+    Ein Tippfehler lässt das Wort stehen – einfach mit dem richtigen Buchstaben weiter.</p>
+    <p><b>Punkte sammeln:</b> Fehlerfreie Wörter bringen dir <b style="color: var(--send)">Punkte</b> (Leiste rechts neben dem Posteingang, max. ${cfg.points.max}).
+    Gesammelte Punkte sind sicher – auch ein Tippfehler nimmt sie dir nicht. Wie schnell sie kommen, bestimmt deine <b>Combo</b>
+    (fehlerfreie Wörter in Folge): ${pointRatesText(cfg)}. Ein Tippfehler setzt die Combo und den Fortschritt zum nächsten Punkt auf 0.
+    Ist die Leiste voll, verfällt jeder weitere Punkt.</p>
+    <p><b>Angreifen:</b> <kbd>Enter</kbd> gibt <b>alle</b> Punkte aus und schickt pro Punkt ein Müllwort an dein Ziel. Dabei wandern deine
+    <b>längsten Wörter</b> zum Gegner und verschwinden aus deinem Posteingang – welche das sind, ist <b style="color: var(--send)">bernsteinfarben</b> markiert.</p>
+    <p><b>Abwehren:</b> Kommt Spam auf dich zu, erscheint <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet ${pointsLabel(cfg.defense.pointsPerWord)}.
+    Angreifen oder sparen? Wer alles raushaut, hat nichts mehr zum Abwehren.</p>`;
   const table = el('div', 'key-table');
   const row = (keys: string, what: string) => {
     const k = el('span', 'key-cell');
@@ -278,8 +280,9 @@ export function renderMenu(
     table.append(k, w);
   };
   row('<kbd>A</kbd>–<kbd>Z</kbd>, <kbd>Ä</kbd> …', 'Wort tippen');
-  row('<kbd>Leertaste</kbd>', `Ein Wort aus dem Angriffs-Pool abschicken – ohne Leertaste geht alle ${cfg.attack.autoSendIntervalMs / 1000} s automatisch eins raus`);
-  row('<kbd>Tab</kbd>', 'Kommt Spam und reicht die Combo: abwehren – sonst Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)');
+  row('<kbd>Enter</kbd>', 'Angriff: alle Punkte ausgeben, 1 Müllwort pro Punkt an dein Ziel');
+  row('<kbd>Tab</kbd>', `Kommt Spam und hast du Punkte: abwehren (${pointsLabel(cfg.defense.pointsPerWord)} pro Wort) – sonst Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)`);
+  row('<kbd>Leertaste</kbd>', 'keine Funktion');
   row('<kbd>1</kbd>–<kbd>5</kbd> / <kbd>6</kbd>–<kbd>0</kbd>', 'Gegner direkt anvisieren – links von oben 1–5, rechts von oben 6–0');
   row('<kbd>F4</kbd>', 'Ton an/aus (auch per Klick auf „Ton“ im Spiel)');
   row('<kbd>Esc</kbd>', 'Zurück zum Menü – im Spiel mit Nachfrage, das Spiel pausiert so lange');

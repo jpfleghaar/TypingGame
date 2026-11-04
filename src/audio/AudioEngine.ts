@@ -346,9 +346,13 @@ export class AudioEngine {
           if (e.playerId === me) this.setCombo(0);
           if (e.playerId === me && e.combo >= 3) this.tone(330, t, 0.25, 'triangle', 0.05, this.sfx, 1200, 180);
           break;
-        case 'ATTACK_LOADED':
-          // Aufladen: kurzer steigender Ton (Angriff bereit – Leertaste)
-          if (e.playerId === me) this.tone(440, t, 0.18, 'square', 0.04, this.sfx, 3000, 1320);
+        case 'POINT_EARNED':
+          // Neuer Punkt: kurzer steigender Ton, je mehr Punkte, desto höher
+          if (e.playerId === me) this.tone(440 * Math.pow(2, Math.min(e.total, 12) / 12), t, 0.16, 'square', 0.035, this.sfx, 3000, 1320);
+          break;
+        case 'POINT_LOST':
+          // Punkt verfallen (Maximum voll): dumpfer kurzer Ton
+          if (e.playerId === me) this.tone(220, t, 0.14, 'triangle', 0.05, this.sfx, 900, 160);
           break;
         case 'DEFENDED':
           // Schild: heller Doppelton

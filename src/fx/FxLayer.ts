@@ -51,12 +51,15 @@ interface Spark {
 const GOOD = '62, 230, 168';
 const DANGER = '255, 84, 112';
 
-/** Combo -> Leuchtstärke des Randes (0..1). */
+/**
+ * Combo -> Leuchtstärke des Randes (0..1). Die Stufen 10 und 20 entsprechen den
+ * Tempo-Stufen der Punkte (schneller Punkte sammeln), siehe `config.points.rates`.
+ */
 export function comboGlow(combo: number): number {
-  if (combo >= 10) return 0.95;
-  if (combo >= 6) return 0.65;
-  if (combo >= 3) return 0.4;
-  if (combo >= 1) return 0.15;
+  if (combo >= 20) return 1;
+  if (combo >= 10) return 0.7;
+  if (combo >= 5) return 0.4;
+  if (combo >= 1) return 0.18;
   return 0;
 }
 

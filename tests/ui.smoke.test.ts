@@ -63,24 +63,47 @@ describe('UI-Rauchtest', () => {
     expect(cards[2].classList.contains('got-hit')).toBe(true);
     expect(cards[2].querySelector('.hit-label')?.textContent).toContain('+2');
 
-    // Aufforderungen: geladener Angriff → "Senden", eingehender Spam + genug Combo → "Abwehren"
-    me.pendingAttack = { amount: 2, loadTick: s.runner.state.tick, autoTick: s.runner.state.tick + 180 };
-    me.combo = 6;
+    // Punkte-Leiste: Segmente, Zähler, Fortschritt
+    const points = root.querySelector('.points') as HTMLElement;
+    expect(points).not.toBeNull();
+    expect(points.querySelectorAll('.points-segs i')).toHaveLength(s.runner.state.config.points.max);
+    me.points = 3;
+    me.pointProgress = 1;
+    me.combo = 4;
+    frame();
+    expect(points.querySelectorAll('.points-segs i.on')).toHaveLength(3);
+    expect(points.querySelector('.points-count')?.textContent).toBe('3/8');
+    // HUD: Punkte groß als eigene Kachel, Combo getrennt davon
+    expect(root.querySelector('.hud .points-stat b')?.textContent).toBe('3/8');
+    expect(root.querySelector('.hud .combo b')?.textContent).toBe('4');
+    expect(points.querySelector('.points-rate')?.textContent).toBe('1/3 Wörter');
+    expect(points.classList.contains('max')).toBe(false);
+    me.points = 8;
+    frame();
+    expect(points.classList.contains('max')).toBe(true);
+    expect(points.querySelector('.points-count')?.textContent).toBe('MAX');
+
+    // Aufforderungen: Punkte → "Angriff", eingehender Spam + Punkte → "Abwehren"
+    me.points = 2;
     me.incoming.push({ id: 98, from: 2, amount: 3, words: ['a', 'b', 'c'], sentTick: 0, arriveTick: 99999 });
     frame();
     const send = root.querySelector('.prompt.send') as HTMLElement;
     const defend = root.querySelector('.prompt.defend') as HTMLElement;
     expect(send.hidden).toBe(false);
-    expect(send.textContent).toContain('2 bereit');
+    expect(send.textContent).toContain('Enter');
+    expect(send.textContent).toContain('2 Punkte → 2 Wörter');
     expect(defend.hidden).toBe(false);
     expect(defend.classList.contains('ready')).toBe(true);
-    expect(defend.textContent).toContain('3×'); // 6 Combo, 1 pro Wort, 3 Wörter unterwegs
-    me.combo = 0;
+    expect(defend.textContent).toContain('2×'); // 2 Punkte, 1 pro Wort, 3 Wörter unterwegs
+    me.points = 0;
+    me.combo = 15; // Combo ist keine Währung
     frame();
+    expect(send.hidden).toBe(true);
     expect(defend.classList.contains('ready')).toBe(false);
 
-    // Grün markiert: genau die Wörter, die der geladene Angriff mitnimmt (2 geladen − 3 eingehend = 0)
+    // Markiert: genau die Wörter, die ein Angriff mit Enter mitnimmt (1 Wort pro Punkt)
     expect(root.querySelectorAll('.row.to-send')).toHaveLength(0);
+    me.points = 2;
     me.incoming.length = 0;
     third.incoming.length = 0;
     frame();

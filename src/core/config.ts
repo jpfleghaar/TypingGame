@@ -2,9 +2,10 @@
  * Zentrale Balancing-Config. Alle Zeiten in Millisekunden; die Logik rechnet
  * intern in Ticks (siehe msToTicks).
  */
-export interface ComboThreshold {
-  combo: number;
-  garbage: number;
+/** Ab dieser Combo braucht ein Punkt so viele fehlerfreie Wörter. */
+export interface PointRate {
+  minCombo: number;
+  words: number;
 }
 
 export interface GameConfig {
@@ -39,27 +40,27 @@ export interface GameConfig {
   };
 
   /**
-   * Angriffe landen in einem Pool: Jede Leertaste schickt EIN Wort daraus,
-   * ohne Leertaste geht alle `autoSendIntervalMs` automatisch ein Wort raus.
-   * 0 = der ganze Pool geht sofort in einem Angriff raus (klassisch, z. B. für Tests).
+   * Punkte = sichere Währung. Fehlerfreie Wörter bringen Fortschritt zum nächsten
+   * Punkt; wie viele Wörter ein Punkt braucht, hängt von der Combo ab. Punkte gehen
+   * bei Tippfehlern NICHT verloren (nur der Fortschritt zum nächsten Punkt).
    */
+  points: {
+    /** Höchstens so viele Punkte; was darüber hinaus verdient wird, verfällt. */
+    max: number;
+    /** Wörter pro Punkt je Combo-Bereich, aufsteigend nach `minCombo` (erster Eintrag: minCombo 0). */
+    rates: PointRate[];
+  };
+
+  /** Angriff mit Enter: gibt ALLE Punkte aus. */
   attack: {
-    autoSendIntervalMs: number;
+    /** Müllwörter pro ausgegebenem Punkt (vor Abzeichen-Bonus). */
+    garbagePerPoint: number;
   };
 
-  /** Abwehr mit Tab: eingehende Müllwörter gegen Combo-Punkte abwehren. */
+  /** Abwehr mit Tab: eingehende Müllwörter gegen Punkte abwehren. */
   defense: {
-    /** So viele Combo-Punkte kostet ein abgewehrtes Wort. */
-    comboCostPerWord: number;
-  };
-
-  combo: {
-    /** Exakte Combo-Stufen, die einen Angriff auslösen. */
-    thresholds: ComboThreshold[];
-    /** Nach der höchsten Stufe: alle N weiteren Wörter ein Angriff ... */
-    repeatEvery: number;
-    /** ... mit dieser Müllmenge. */
-    repeatGarbage: number;
+    /** So viele Punkte kostet ein abgewehrtes Wort. */
+    pointsPerWord: number;
   };
 
   garbage: {
@@ -127,22 +128,21 @@ export const DEFAULT_CONFIG: GameConfig = {
     end: { short: 0.25, medium: 0.45, long: 0.3 },
   },
 
+  points: {
+    max: 8,
+    rates: [
+      { minCombo: 0, words: 3 },
+      { minCombo: 10, words: 2 },
+      { minCombo: 20, words: 1 },
+    ],
+  },
+
   attack: {
-    autoSendIntervalMs: 5000,
+    garbagePerPoint: 1,
   },
 
   defense: {
-    comboCostPerWord: 1,
-  },
-
-  combo: {
-    thresholds: [
-      { combo: 3, garbage: 1 },
-      { combo: 6, garbage: 2 },
-      { combo: 10, garbage: 3 },
-    ],
-    repeatEvery: 8,
-    repeatGarbage: 2,
+    pointsPerWord: 1,
   },
 
   garbage: {

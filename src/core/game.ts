@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG, msToTicks, ticksToMs, type GameConfig } from './config';
-import { applyBadgeBonus, cancelIncoming, comboAttack, pendingGarbage } from './garbage';
+import { applyBadgeBonus, cancelIncoming, pendingGarbage, wordsPerPoint } from './garbage';
 import { createRng, deriveSeed } from './rng';
 import { computeTarget } from './targeting';
 import {
@@ -35,6 +35,10 @@ function emptyStats(): PlayerState['stats'] {
     garbageCancelled: 0,
     kos: 0,
     maxCombo: 0,
+    pointsEarned: 0,
+    pointsAttack: 0,
+    pointsDefense: 0,
+    pointsLost: 0,
   };
 }
 
@@ -104,12 +108,13 @@ export function createGame(opts: CreateGameOptions): GameState {
     stack: [],
     cursor: 0,
     combo: 0,
+    points: 0,
+    pointProgress: 0,
     badges: 0,
     strategy: setup.strategy ?? 'random',
     targetId: null,
     retargetTick: 0,
     seqIndex: 0,
-    pendingAttack: null,
     incoming: [],
     lastHitBy: null,
     lastHitTick: -Infinity,
@@ -141,7 +146,7 @@ function aliveCount(state: GameState): number {
 /**
  * Welche Wörter ein Angriff mit `n` Müllwörtern aus dem Stapel mitnimmt: die
  * längsten, das aktive Wort ausgenommen (bei gleicher Länge das untere zuerst).
- * Wird auch von der Anzeige genutzt (grüne Markierung), damit beides übereinstimmt.
+ * Wird auch von der Anzeige genutzt (Markierung), damit beides übereinstimmt.
  */
 export function selectWordsToSend(p: Readonly<PlayerState>, n: number): Word[] {
   if (n <= 0) return [];
@@ -153,10 +158,9 @@ export function selectWordsToSend(p: Readonly<PlayerState>, n: number): Word[] {
     .map((x) => x.w);
 }
 
-/** Wie viele Wörter ein geladener Angriff jetzt tatsächlich verschicken würde (nach Verrechnung). */
-export function wordsLeavingWithAttack(p: Readonly<PlayerState>): number {
-  if (!p.pendingAttack) return 0;
-  return Math.max(0, p.pendingAttack.amount - pendingGarbage(p.incoming));
+/** Wie viele eigene Wörter ein Angriff mit Enter jetzt mitnehmen würde (vor Abzeichen-Bonus). */
+export function wordsLeavingWithAttack(p: Readonly<PlayerState>, cfg: GameConfig): number {
+  return p.points * cfg.attack.garbagePerPoint;
 }
 
 function takeLongestWords(state: GameState, bank: WordBank, p: PlayerState, n: number): string[] {
@@ -172,71 +176,68 @@ function takeLongestWords(state: GameState, bank: WordBank, p: PlayerState, n: n
   return words;
 }
 
-function sendAttack(state: GameState, bank: WordBank, p: PlayerState, amount: number, events: GameEvent[]): void {
-  const { remaining, cancelled } = cancelIncoming(p.incoming, amount);
-  for (const c of cancelled) {
-    p.stats.garbageCancelled += c.amount;
-    events.push({ type: 'GARBAGE_CANCELLED', playerId: p.id, from: c.from, amount: c.amount });
-  }
-  if (remaining <= 0) return;
+/** Lebendes Ziel für einen Angriff (wählt neu, falls das bisherige ausgeschieden ist). */
+function attackTarget(state: GameState, p: PlayerState): PlayerState | undefined {
   let target = p.targetId !== null ? state.players[p.targetId] : undefined;
   if (!target || !target.alive) {
     p.targetId = computeTarget(state, p, currentTargets(state));
     target = p.targetId !== null ? state.players[p.targetId] : undefined;
   }
-  if (!target || !target.alive) return;
-  const arriveTick = state.tick + msToTicks(state.config.garbage.warningMs, state.config);
-  // Die längsten eigenen Wörter wandern zum Gegner (verschoben, nicht kopiert)
-  const words = takeLongestWords(state, bank, p, remaining);
-  const pkt = { id: state.nextGarbageId++, from: p.id, amount: remaining, words, sentTick: state.tick, arriveTick };
-  target.incoming.push(pkt);
-  p.stats.attacksSent++;
-  p.stats.garbageSent += remaining;
-  events.push({ type: 'ATTACK_SENT', from: p.id, to: target.id, amount: remaining, garbageId: pkt.id, arriveTick });
-}
-
-/** Zeitpunkt für das nächste automatisch gesendete Wort. */
-function nextAutoTick(state: GameState): number {
-  const ms = state.config.attack.autoSendIntervalMs;
-  return ms <= 0 ? state.tick : state.tick + msToTicks(ms, state.config);
-}
-
-/** Angriffs-Pool auffüllen. Der Timer läuft weiter, falls schon Wörter im Pool sind. */
-function loadAttack(state: GameState, p: PlayerState, amount: number, events: GameEvent[]): void {
-  const pa = p.pendingAttack ?? { amount: 0, loadTick: state.tick, autoTick: nextAutoTick(state) };
-  pa.amount += amount;
-  p.pendingAttack = pa;
-  events.push({ type: 'ATTACK_LOADED', playerId: p.id, amount, total: pa.amount, autoTick: pa.autoTick });
+  return target && target.alive && target.id !== p.id ? target : undefined;
 }
 
 /**
- * EIN Wort aus dem Pool abschicken (Leertaste oder Timer). Danach startet der
- * Timer neu. Mit Intervall 0 (klassisch) geht der ganze Pool auf einmal raus.
+ * Enter: ALLE Punkte als Angriff ausgeben – pro Punkt ein Müllwort (plus
+ * Abzeichen-Bonus) an das aktuelle Ziel. Eingehender Müll wird dabei nicht
+ * verrechnet; dafür ist die Abwehr (Tab) da. Ohne Punkte oder Ziel passiert nichts.
  */
-function releaseAttack(state: GameState, bank: WordBank, p: PlayerState, events: GameEvent[]): void {
-  const pa = p.pendingAttack;
-  if (!pa || !p.alive) return;
-  const all = state.config.attack.autoSendIntervalMs <= 0;
-  const n = all ? pa.amount : 1;
-  pa.amount -= n;
-  pa.autoTick = nextAutoTick(state);
-  if (pa.amount <= 0) p.pendingAttack = null;
-  sendAttack(state, bank, p, n, events);
+function sendAttack(state: GameState, bank: WordBank, p: PlayerState, events: GameEvent[]): void {
+  if (p.points <= 0) return;
+  const target = attackTarget(state, p);
+  if (!target) return;
+  const spent = p.points;
+  const amount = applyBadgeBonus(spent * state.config.attack.garbagePerPoint, p.badges, state.config, state.rng);
+  p.points = 0;
+  p.stats.pointsAttack += spent;
+  const arriveTick = state.tick + msToTicks(state.config.garbage.warningMs, state.config);
+  // Die längsten eigenen Wörter wandern zum Gegner (verschoben, nicht kopiert)
+  const words = takeLongestWords(state, bank, p, amount);
+  const pkt = { id: state.nextGarbageId++, from: p.id, amount, words, sentTick: state.tick, arriveTick };
+  target.incoming.push(pkt);
+  p.stats.attacksSent++;
+  p.stats.garbageSent += amount;
+  events.push({ type: 'ATTACK_SENT', from: p.id, to: target.id, amount, pointsSpent: spent, garbageId: pkt.id, arriveTick });
 }
 
-/** Tab-Abwehr: so viele eingehende Wörter abwehren, wie die Combo bezahlen kann (älteste zuerst). */
+/** Tab-Abwehr: so viele eingehende Wörter abwehren, wie die Punkte bezahlen können (älteste zuerst). */
 function defend(state: GameState, p: PlayerState, events: GameEvent[]): void {
-  const cost = state.config.defense.comboCostPerWord;
+  const cost = state.config.defense.pointsPerWord;
   const pending = pendingGarbage(p.incoming);
-  const n = Math.min(pending, Math.floor(p.combo / cost));
+  const n = Math.min(pending, Math.floor(p.points / cost));
   if (n <= 0) return;
   const { cancelled } = cancelIncoming(p.incoming, n);
   for (const c of cancelled) {
     p.stats.garbageCancelled += c.amount;
     events.push({ type: 'GARBAGE_CANCELLED', playerId: p.id, from: c.from, amount: c.amount });
   }
-  p.combo -= n * cost;
-  events.push({ type: 'DEFENDED', playerId: p.id, amount: n, comboSpent: n * cost });
+  p.points -= n * cost;
+  p.stats.pointsDefense += n * cost;
+  events.push({ type: 'DEFENDED', playerId: p.id, amount: n, pointsSpent: n * cost });
+}
+
+/** Fortschritt zum nächsten Punkt; beim Maximum verfällt der neue Punkt. */
+function addProgress(state: GameState, p: PlayerState, events: GameEvent[]): void {
+  p.pointProgress++;
+  if (p.pointProgress < wordsPerPoint(p.combo, state.config)) return;
+  p.pointProgress = 0;
+  if (p.points >= state.config.points.max) {
+    p.stats.pointsLost++;
+    events.push({ type: 'POINT_LOST', playerId: p.id, lost: p.stats.pointsLost });
+    return;
+  }
+  p.points++;
+  p.stats.pointsEarned++;
+  events.push({ type: 'POINT_EARNED', playerId: p.id, total: p.points });
 }
 
 function clearWord(state: GameState, p: PlayerState, events: GameEvent[]): void {
@@ -250,17 +251,13 @@ function clearWord(state: GameState, p: PlayerState, events: GameEvent[]): void 
     ticks: Math.max(0, state.tick - word.startTick),
     errors: word.errors,
   });
+  // Nur ein Wort ganz ohne Tippfehler zählt für Combo und Punkte.
   if (!word.hadError) {
     p.combo++;
     p.stats.maxCombo = Math.max(p.stats.maxCombo, p.combo);
   }
   events.push({ type: 'WORD_CLEARED', playerId: p.id, word, combo: p.combo });
-  if (word.hadError) return;
-  const base = comboAttack(p.combo, state.config);
-  if (base <= 0) return;
-  const amount = applyBadgeBonus(base, p.badges, state.config, state.rng);
-  events.push({ type: 'ATTACK_TRIGGERED', playerId: p.id, amount, combo: p.combo });
-  loadAttack(state, p, amount, events);
+  if (!word.hadError) addProgress(state, p, events);
 }
 
 function handleKey(state: GameState, p: PlayerState, key: string, events: GameEvent[]): void {
@@ -281,8 +278,10 @@ function handleKey(state: GameState, p: PlayerState, key: string, events: GameEv
   events.push({ type: 'KEY_ERROR', playerId: p.id, wordId: word.id, index: p.cursor, key });
   if (p.combo > 0) {
     events.push({ type: 'COMBO_BROKEN', playerId: p.id, combo: p.combo });
-    p.combo = 0;
   }
+  // Tippfehler: Combo und Fortschritt zum nächsten Punkt weg – gesammelte Punkte bleiben.
+  p.combo = 0;
+  p.pointProgress = 0;
 }
 
 function applyCommand(state: GameState, bank: WordBank, cmd: Command, events: GameEvent[]): void {
@@ -293,7 +292,7 @@ function applyCommand(state: GameState, bank: WordBank, cmd: Command, events: Ga
       handleKey(state, p, cmd.key, events);
       break;
     case 'SEND_ATTACK':
-      releaseAttack(state, bank, p, events);
+      sendAttack(state, bank, p, events);
       break;
     case 'DEFEND':
       defend(state, p, events);
@@ -370,7 +369,7 @@ function knockOut(state: GameState, victim: PlayerState, events: GameEvent[]): v
   victim.placement = placement;
   victim.incoming = [];
   victim.combo = 0;
-  victim.pendingAttack = null;
+  victim.pointProgress = 0;
   const window = msToTicks(state.config.badges.koCreditWindowMs, state.config);
   const killer =
     victim.lastHitBy !== null && state.tick - victim.lastHitTick <= window ? state.players[victim.lastHitBy] : undefined;
@@ -439,10 +438,6 @@ export function step(state: GameState, bank: WordBank, commands: readonly Comman
     .map((c, i) => ({ c, i }))
     .sort((a, b) => a.c.playerId - b.c.playerId || a.i - b.i);
   for (const { c } of ordered) applyCommand(state, bank, c, events);
-  // Geladene Angriffe, die niemand abgeschickt hat, gehen jetzt automatisch raus
-  for (const p of state.players) {
-    if (p.alive && p.pendingAttack && state.tick >= p.pendingAttack.autoTick) releaseAttack(state, bank, p, events);
-  }
   arriveGarbage(state, bank, events);
   spawnWords(state, bank, events);
   refillEmpty(state, bank, events);

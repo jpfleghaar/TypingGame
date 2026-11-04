@@ -2,14 +2,11 @@ import type { GameConfig } from './config';
 import { next, type RngState } from './rng';
 import type { IncomingGarbage, PlayerId } from './types';
 
-/** Müllmenge, die eine bestimmte Combo-Stufe auslöst (0 = kein Angriff). */
-export function comboAttack(combo: number, cfg: GameConfig): number {
-  const { thresholds, repeatEvery, repeatGarbage } = cfg.combo;
-  const hit = thresholds.find((t) => t.combo === combo);
-  if (hit) return hit.garbage;
-  const top = thresholds.reduce((m, t) => Math.max(m, t.combo), 0);
-  if (repeatEvery > 0 && combo > top && (combo - top) % repeatEvery === 0) return repeatGarbage;
-  return 0;
+/** Wie viele fehlerfreie Wörter bei dieser Combo einen Punkt bringen. */
+export function wordsPerPoint(combo: number, cfg: GameConfig): number {
+  let words = cfg.points.rates[0]?.words ?? 1;
+  for (const r of cfg.points.rates) if (combo >= r.minCombo) words = r.words;
+  return Math.max(1, words);
 }
 
 /** Bonus-Faktor (z. B. 0.5 = +50 %) für eine Abzeichen-Anzahl. */
@@ -38,7 +35,7 @@ export interface CancelResult {
 }
 
 /**
- * Verrechnet einen eigenen Angriff mit eingehendem Müll, ältester zuerst.
+ * Zieht `amount` Wörter vom eingehenden Müll ab (Abwehr), ältester zuerst.
  * Verändert `incoming` direkt (verbrauchte Pakete werden entfernt).
  */
 export function cancelIncoming(incoming: IncomingGarbage[], amount: number): CancelResult {

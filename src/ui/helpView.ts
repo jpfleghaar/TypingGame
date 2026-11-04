@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG } from '../core';
 import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
-import { el } from './labels';
+import { el, pointRateRanges, pointsLabel } from './labels';
 
 /**
  * Anleitung: alles, was man zum Spielen wissen muss. Die Zahlen kommen direkt
@@ -8,7 +8,8 @@ import { el } from './labels';
  */
 export function renderHelp(root: HTMLElement, onBack: () => void): void {
   const cfg = DEFAULT_CONFIG;
-  const combos = cfg.combo.thresholds;
+  const rates = pointRateRanges(cfg);
+  const maxP = cfg.points.max;
   const t = cfg.badges.tiers;
   const b = cfg.badges.bonus.map((x) => `+${Math.round(x * 100)} %`);
   const warnS = cfg.garbage.warningMs / 1000;
@@ -30,7 +31,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
     Der letzte Überlebende gewinnt.</p>
 
     <nav class="toc" aria-label="Inhalt">
-      <a href="#h-ziel">Ziel</a><a href="#h-stapel">Dein Stapel</a><a href="#h-combo">Combos</a>
+      <a href="#h-ziel">Ziel</a><a href="#h-stapel">Dein Stapel</a><a href="#h-combo">Combo & Punkte</a>
       <a href="#h-muell">Müll</a><a href="#h-abwehr">Abwehr</a><a href="#h-ziele">Ziel-Strategien</a>
       <a href="#h-abzeichen">K.O.-Abzeichen</a><a href="#h-anzeige">Bildschirm</a><a href="#h-modi">Modi & Lernen</a>
       <a href="#h-tasten">Tasten</a><a href="#h-tipps">Tipps</a>
@@ -68,20 +69,29 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
     </section>
 
     <section id="h-combo">
-      <h2>Combos</h2>
-      <p>Jedes Wort, das du <b>ohne Tippfehler</b> fertig tippst, erhöht deine Combo um 1.
-      Ein Tippfehler setzt sie auf 0. Das Wort bleibt dabei stehen, du tippst einfach mit dem richtigen Buchstaben weiter.
-      Der falsche Buchstabe wackelt kurz rot.</p>
+      <h2>Combo & Punkte</h2>
+      <p><b>Punkte</b> sind deine Währung für Angriff und Abwehr. Du siehst sie als <b style="color: var(--send)">Leiste rechts neben dem Posteingang</b>
+      (höchstens ${maxP}). Darunter zeigt ein kleiner Balken, wie weit du bis zum nächsten Punkt bist.</p>
+      <ul>
+        <li><b>Punkte sammeln:</b> Jedes Wort, das du <b>ohne einen einzigen Tippfehler</b> fertig tippst, bringt Fortschritt zum nächsten Punkt.</li>
+        <li><b>Punkte sind sicher:</b> Einmal verdient, gehen sie nicht mehr verloren – auch nicht durch Tippfehler. Nur Ausgeben (Enter/Tab) verbraucht sie.</li>
+        <li><b>Maximum:</b> Hast du ${maxP} Punkte, leuchtet die Leiste <b>MAX</b>. Jeder weitere verdiente Punkt verfällt – gib sie lieber aus.</li>
+      </ul>
+      <p>Die <b>Combo</b> zählt deine fehlerfreien Wörter in Folge und bestimmt, <b>wie schnell</b> Punkte kommen:</p>
       <table class="help-table">
-        <tr><th>Combo</th>${combos.map((c) => `<td>${c.combo}</td>`).join('')}<td>danach alle ${cfg.combo.repeatEvery} Wörter</td></tr>
-        <tr><th>Müll an Gegner</th>${combos.map((c) => `<td>${c.garbage} ${c.garbage > 1 ? 'Wörter' : 'Wort'}</td>`).join('')}<td>${cfg.combo.repeatGarbage} Wörter</td></tr>
+        <tr><th>Combo</th>${rates.map((r) => `<td>${r.range}</td>`).join('')}</tr>
+        <tr><th>Wörter pro Punkt</th>${rates.map((r) => `<td>${r.words}</td>`).join('')}</tr>
       </table>
-      <p>Der Bildschirmrand leuchtet umso stärker grün, je höher deine Combo ist. Auch die Musik bekommt mit steigender Combo neue Schichten.</p>
+      <p>Ein Tippfehler setzt die Combo auf 0 – und auch den Fortschritt zum nächsten Punkt. <b>Gesammelte Punkte bleiben.</b>
+      Ein Wort mit Tippfehler zählt gar nicht. Das Wort bleibt dabei stehen, du tippst einfach mit dem richtigen Buchstaben weiter; der falsche Buchstabe wackelt kurz rot.
+      Punkte ausgeben ändert die Combo nicht.</p>
+      <p class="example">Beispiel: Combo 12, Fortschritt 1/2. Ein Tippfehler → Combo 0, Fortschritt 0/3. Deine 5 Punkte hast du aber weiterhin.</p>
+      <p>Der Rahmen um deinen Posteingang leuchtet umso stärker, je höher deine Combo ist – am hellsten ab Combo 20. Auch die Musik bekommt mit steigender Combo neue Schichten.</p>
     </section>
 
     <section id="h-muell">
       <h2>Müll</h2>
-      <p>Wenn ein Gegner eine Combo-Stufe erreicht, schickt er dir <b>Müllwörter</b>. Sie sind rosa und mit ◆ markiert.</p>
+      <p>Wenn ein Gegner seine Punkte für einen Angriff ausgibt, schickt er dir <b>Müllwörter</b> (eins pro Punkt). Sie sind rosa und mit ◆ markiert.</p>
       <ul>
         <li><b>Vorwarnung:</b> Der rote Balken links neben deinem Stapel füllt sich ${warnS} Sekunden lang. Daneben steht, wie viele Müllwörter kommen. Kurz vor dem Einschlag pulsiert der Balken.</li>
         <li><b>Einschlag:</b> Der Müll landet direkt <b>über deinem aktiven Wort</b>. Er ist also als Nächstes dran und schiebt deinen Stapel nach oben.</li>
@@ -91,23 +101,22 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
     </section>
 
     <section id="h-abwehr">
-      <h2>Abwehr</h2>
-      <p><b>Mit Tab:</b> Kommt Spam auf dich zu, erscheint unter dem Posteingang <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
-      ${cfg.defense.comboCostPerWord} ${cfg.defense.comboCostPerWord === 1 ? 'Combo-Punkt' : 'Combo-Punkte'}; ein Druck wehrt so viel ab, wie deine Combo bezahlen kann (älteste Wörter zuerst).
-      Reicht die Combo nicht, wechselt <kbd>Tab</kbd> wie gewohnt die Strategie.</p>
-      <p><b>Mit einem Angriff:</b> Schickst du selbst einen Angriff ab, während Müll zu dir unterwegs ist, wird zuerst <b>der eingehende Müll verrechnet</b>.
-      Nur der Rest geht an deinen Gegner.</p>
-      <p class="example">Beispiel: 2 Müllwörter kommen auf dich zu. Du erreichst Combo 6 (= 2 Müll). Ergebnis: Der eingehende Müll ist komplett weg, an den Gegner geht nichts.
-      Hättest du Combo 10 erreicht (= 3 Müll), ginge 1 Wort an den Gegner.</p>
-      <p>Eine erfolgreiche Abwehr erkennst du am grünen Aufleuchten des Warnbalkens.</p>
+      <h2>Angriff & Abwehr</h2>
+      <p><b>Angriff mit Enter:</b> Gibt <b>alle</b> deine Punkte aus und schickt pro Punkt ein Müllwort an dein aktuelles Ziel. Unter dem Posteingang steht,
+      wie viele Wörter rausgehen; die Wörter, die dabei aus deinem Posteingang verschwinden, sind <b style="color: var(--send)">bernsteinfarben</b> markiert.
+      K.O.-Abzeichen machen den Angriff stärker (siehe unten).</p>
+      <p><b>Abwehr mit Tab:</b> Kommt Spam auf dich zu, erscheint unter dem Posteingang <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
+      ${pointsLabel(cfg.defense.pointsPerWord)}; ein Druck wehrt so viel ab, wie deine Punkte bezahlen können (älteste Wörter zuerst).
+      Hast du keine Punkte, wechselt <kbd>Tab</kbd> wie gewohnt die Strategie.</p>
+      <p><b>Angreifen oder sparen?</b> Ein Angriff verrechnet eingehenden Müll <b>nicht</b>. Wer alle Punkte raushaut, steht beim nächsten Angriff ohne Abwehr da.
+      Wer zu lange spart, verliert Punkte am Maximum.</p>
+      <p class="example">Beispiel: Du hast 6 Punkte, 2 Müllwörter kommen. <kbd>Tab</kbd> → beide abgewehrt, 4 Punkte übrig. Danach <kbd>Enter</kbd> → 4 Müllwörter an dein Ziel.</p>
+      <p>Eine erfolgreiche Abwehr erkennst du am grünen Aufleuchten des Warnbalkens. Die Leertaste hat im Spiel keine Funktion.</p>
     </section>
 
     <section id="h-ziele">
       <h2>Ziel-Strategien</h2>
-      <p><b>Angriffe sind geladen:</b> Bei einer Combo-Stufe erscheint <kbd>Leertaste</kbd> <b>Senden</b>. Drückst du sie, geht der Angriff sofort raus,
-      sonst alle ${cfg.attack.autoSendIntervalMs / 1000} Sekunden automatisch eins. Weitere Combo-Stufen füllen den Pool auf.
-      Die Wörter, die dabei aus deinem Posteingang verschickt werden, sind <b style="color: var(--send)">bernsteinfarben</b> markiert (wie die Combo-Zahl).</p>
-      <p>Mit <kbd>Tab</kbd> wechselst du die Ziel-Strategie (außer wenn gerade Abwehr möglich ist). Mit den <b>Zifferntasten</b> wählst du einen Gegner direkt: links von oben <kbd>1</kbd>–<kbd>5</kbd>, rechts von oben <kbd>6</kbd>–<kbd>9</kbd> und <kbd>0</kbd>. Die Ziffer steht auch auf jeder Karte. Trifft dein Angriff, wackelt die Karte kurz und du hörst einen Einschlag. Ein direkt gewähltes Ziel bleibt, bis du <kbd>Tab</kbd> drückst oder es ausscheidet. Dein aktuelles Ziel steht unter dem Posteingang.</p>
+      <p>Mit <kbd>Tab</kbd> wechselst du die Ziel-Strategie (außer wenn gerade Abwehr möglich ist, also Spam kommt und du Punkte hast). Mit den <b>Zifferntasten</b> wählst du einen Gegner direkt: links von oben <kbd>1</kbd>–<kbd>5</kbd>, rechts von oben <kbd>6</kbd>–<kbd>9</kbd> und <kbd>0</kbd>. Die Ziffer steht auch auf jeder Karte. Trifft dein Angriff, wackelt die Karte kurz und du hörst einen Einschlag. Ein direkt gewähltes Ziel bleibt, bis du <kbd>Tab</kbd> drückst oder es ausscheidet. Dein aktuelles Ziel steht unter dem Posteingang.</p>
       <dl class="help-dl">
         <dt>Zufall</dt><dd>Alle paar Sekunden ein neuer zufälliger Gegner.</dd>
         <dt>Angreifer</dt><dd>Wer dich gerade angreift oder anvisiert. Gut, um dich zu wehren.</dd>
@@ -132,6 +141,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       <h2>Was du auf dem Bildschirm siehst</h2>
       <dl class="help-dl">
         <dt>Oben</dt><dd>Combo, deine aktuellen WPM, verbleibende Spieler, Rundenzeit. Darunter Ziel, Strategie und deine Abzeichen.</dd>
+        <dt>Punkte-Leiste</dt><dd>Rechts neben dem Posteingang: deine Punkte (max. ${maxP}), darunter der Fortschritt zum nächsten Punkt und wie viele Wörter er bei deiner Combo braucht. Bei vollem Maximum pulsiert sie und zeigt <b>MAX</b>.</dd>
         <dt>Links & rechts</dt><dd>Die Gegner. Der Balken zeigt die Füllung ihres Stapels (grün → gelb → rot), ★ zahlt ihre Abzeichen. Ausgeschiedene sind durchgestrichen und zeigen ihren Platz.</dd>
         <dt>Grüner Pfeil</dt><dd>Zeigt auf dein aktuelles Ziel. Deine Angriffe fliegen als grüne Lichtspur dorthin.</dd>
         <dt>Roter Punkt / roter Pfeil</dt><dd>Dieser Gegner hat dir gerade Müll geschickt. Angriffe auf dich kommen als rote Lichtspur.</dd>
@@ -155,8 +165,9 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       <h2>Tasten</h2>
       <table class="help-table keys-table">
         <tr><th><kbd>Buchstaben</kbd></th><td>unterstes Wort tippen</td></tr>
-        <tr><th><kbd>Leertaste</kbd></th><td>Ein Wort aus dem Angriffs-Pool abschicken (ohne Leertaste automatisch eins alle 5 s)</td></tr>
-        <tr><th><kbd>Tab</kbd></th><td>Spam abwehren (wenn welcher kommt und die Combo reicht), sonst Ziel-Strategie wechseln</td></tr>
+        <tr><th><kbd>Enter</kbd></th><td>Angriff: alle Punkte ausgeben, 1 Müllwort pro Punkt an dein Ziel</td></tr>
+        <tr><th><kbd>Tab</kbd></th><td>Spam abwehren (${pointsLabel(cfg.defense.pointsPerWord)} pro Wort), wenn welcher kommt und du Punkte hast – sonst Ziel-Strategie wechseln</td></tr>
+        <tr><th><kbd>Leertaste</kbd></th><td>keine Funktion</td></tr>
         <tr><th><kbd>1</kbd>–<kbd>0</kbd></th><td>Gegner direkt anvisieren (Ziffer auf der Karte)</td></tr>
         <tr><th><kbd>F4</kbd></th><td>Ton an/aus (auch per Klick auf „Ton“; Lautstärkeregler oben im Spiel)</td></tr>
         <tr><th><kbd>F2</kbd></th><td>Debug-Anzeige: Tick-Rate, eingehender Müll, Bot-Profile</td></tr>
@@ -167,8 +178,9 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
     <section id="h-tipps">
       <h2>Tipps</h2>
       <ul>
-        <li><b>Genauigkeit vor Tempo:</b> Ein Fehler kostet die ganze Combo. Lieber etwas langsamer und sauber.</li>
-        <li><b>Combo halten, wenn Müll kommt:</b> Ein Angriff kurz vor dem Einschlag wehrt ihn ab.</li>
+        <li><b>Genauigkeit vor Tempo:</b> Ein Fehler kostet die ganze Combo – ab Combo 10 und 20 kommen Punkte deutlich schneller. Lieber etwas langsamer und sauber.</li>
+        <li><b>Reserve behalten:</b> Ein paar Punkte für <kbd>Tab</kbd> retten dich, wenn ein großer Angriff kommt.</li>
+        <li><b>Nicht am Maximum sitzen:</b> Bei ${maxP} Punkten verfällt alles Weitere – dann lieber angreifen.</li>
         <li><b>Schwache</b> bringt Abzeichen, <b>Angreifer</b> schützt dich, <b>K.O.-Jäger</b> bremst die Spitze.</li>
         <li>Angreifen entlastet: Jeder Angriff schickt deine längsten Wörter weg.</li>
         <li>Im Finale Müllwörter in Ruhe lesen: Bei gemischter Schreibung passieren die meisten Fehler.</li>

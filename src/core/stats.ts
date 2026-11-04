@@ -16,6 +16,10 @@ export interface PlayerResult {
   kos: number;
   badges: number;
   maxCombo: number;
+  pointsEarned: number;
+  pointsAttack: number;
+  pointsDefense: number;
+  pointsLost: number;
   survivedMs: number;
 }
 
@@ -52,6 +56,10 @@ export function results(state: GameState): PlayerResult[] {
       kos: p.stats.kos,
       badges: p.badges,
       maxCombo: p.stats.maxCombo,
+      pointsEarned: p.stats.pointsEarned,
+      pointsAttack: p.stats.pointsAttack,
+      pointsDefense: p.stats.pointsDefense,
+      pointsLost: p.stats.pointsLost,
       survivedMs: survivedMs(state, p),
     }))
     .sort((a, b) => a.placement - b.placement || a.id - b.id);

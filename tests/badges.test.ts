@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { badgeBonus, DEFAULT_CONFIG, msToTicks } from '../src/core';
-import { idle, newGame, QUIET, typeWord } from './helpers';
+import { attackWith, idle, newGame, QUIET } from './helpers';
 
 describe('badgeBonus', () => {
   it('folgt den Stufen', () => {
@@ -24,7 +24,7 @@ describe('K.O.-Abzeichen', () => {
     s.players[1].badges = 4;
     // P1 hat den vollsten Stapel -> wird von "weakest" anvisiert
     s.players[2].stack.splice(0, 5);
-    for (let i = 0; i < 3; i++) typeWord(s, 0);
+    attackWith(s, 0, 1);
     expect(s.players[1].incoming).toHaveLength(1);
     idle(s, msToTicks(DEFAULT_CONFIG.garbage.warningMs, DEFAULT_CONFIG) + 1);
     const victim = s.players[1];

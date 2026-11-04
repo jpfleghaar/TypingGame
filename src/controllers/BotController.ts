@@ -1,4 +1,16 @@
-import { createRng, deriveSeed, gaussian, next, ticksToMs, type Command, type GameState, type PlayerId, type RngState } from '../core';
+import {
+  createRng,
+  deriveSeed,
+  gaussian,
+  next,
+  pendingGarbage,
+  ticksToMs,
+  type Command,
+  type GameState,
+  type PlayerId,
+  type PlayerState,
+  type RngState,
+} from '../core';
 import type { Controller } from './Controller';
 import { neighborKey, type BotProfile } from './botProfiles';
 
@@ -19,8 +31,8 @@ export class BotController implements Controller {
   private strategySet = false;
   /** Pakete, über deren Abwehr schon entschieden wurde (pro Paket nur einmal würfeln). */
   private decided = new Set<number>();
-  /** Spielzeit (ms) des letzten eigenen Sendens – ein Wort pro Druck. */
-  private lastSendAt = -Infinity;
+  /** Spielzeit (ms), seit der der Bot angreifen will (Reaktionszeit); -1 = gerade nicht. */
+  private readySince = -1;
 
   constructor(
     readonly playerId: PlayerId,
@@ -29,6 +41,60 @@ export class BotController implements Controller {
   ) {
     this.rng = createRng(deriveSeed(seed, 5000 + playerId));
     this.nextKeyAt = 400 + next(this.rng) * 900; // Startverzögerung
+  }
+
+  /**
+   * Punkte ausgeben – angreifen, abwehren oder sparen. Sieht dabei nur, was ein
+   * Mensch auch sieht: eigene Punkte, eigener Stapel, Spam-Warnung, Füllstand der Gegner.
+   */
+  private decide(state: Readonly<GameState>, p: Readonly<PlayerState>, now: number): Command[] {
+    const cfg = state.config;
+    const incoming = pendingGarbage(p.incoming);
+    const cost = cfg.defense.pointsPerWord;
+
+    // 1. Abwehr: pro Paket einmal entscheiden, kurz vor dem Einschlag
+    if (incoming > 0 && p.points >= cost) {
+      const first = p.incoming.reduce((a, b) => (a.arriveTick <= b.arriveTick ? a : b));
+      const msLeft = ticksToMs(first.arriveTick - state.tick, cfg);
+      if (msLeft < 1500 && !this.decided.has(first.id)) {
+        this.decided.add(first.id);
+        // Würde der Einschlag den Stapel (fast) überlaufen lassen, wehrt jeder ab.
+        const critical = p.stack.length + incoming > cfg.stackMax - 2;
+        if (critical || next(this.rng) < this.profile.defenseRate) {
+          this.readySince = -1;
+          return [{ type: 'DEFEND', playerId: this.playerId }];
+        }
+      }
+    }
+
+    // 2. Angriff oder sparen?
+    if (!this.wantsAttack(state, p, incoming)) {
+      this.readySince = -1;
+      return [];
+    }
+    if (this.readySince < 0) this.readySince = now;
+    if (now - this.readySince < this.profile.sendDelayMs) return [];
+    this.readySince = -1;
+    return [{ type: 'SEND_ATTACK', playerId: this.playerId }];
+  }
+
+  private wantsAttack(state: Readonly<GameState>, p: Readonly<PlayerState>, incoming: number): boolean {
+    const cfg = state.config;
+    if (p.points <= 0 || p.targetId === null) return false;
+    const target = state.players[p.targetId];
+    if (!target?.alive) return false;
+    const full = p.points >= cfg.points.max;
+    // Maximum erreicht: lieber raus damit, als Punkte verfallen zu lassen
+    if (full) return true;
+    // Müll unterwegs: Punkte für die Abwehr zurückhalten
+    if (incoming > 0) return false;
+    // Gnadenstoß: Der Angriff würde das Ziel überlaufen lassen
+    const amount = p.points * cfg.attack.garbagePerPoint;
+    if (target.stack.length + amount > cfg.stackMax) return true;
+    // Wird es im eigenen Stapel eng, eine Reserve für die Abwehr behalten
+    const tight = p.stack.length >= cfg.stackMax - 4;
+    const need = this.profile.attackAt + (tight ? this.profile.reserve : 0);
+    return p.points >= Math.min(cfg.points.max, need);
   }
 
   /** Mittlerer Tastenabstand in ms bei Ziel-WPM. */
@@ -59,23 +125,7 @@ export class BotController implements Controller {
     }
     const now = ticksToMs(state.tick, state.config);
 
-    // Pool: pro Leertaste ein Wort, mit Reaktionszeit zwischen den Drücken
-    if (p.pendingAttack) {
-      const since = Math.max(ticksToMs(p.pendingAttack.loadTick, state.config), this.lastSendAt);
-      if (now - since >= this.profile.sendDelayMs) {
-        cmds.push({ type: 'SEND_ATTACK', playerId: this.playerId });
-        this.lastSendAt = now;
-      }
-    }
-    // Abwehr (wie Tab): pro eingehendem Paket einmal entscheiden, kurz vor dem Einschlag
-    if (p.incoming.length > 0 && p.combo >= state.config.defense.comboCostPerWord) {
-      const first = p.incoming.reduce((a, b) => (a.arriveTick <= b.arriveTick ? a : b));
-      const msLeft = ticksToMs(first.arriveTick - state.tick, state.config);
-      if (msLeft < 1500 && !this.decided.has(first.id)) {
-        this.decided.add(first.id);
-        if (next(this.rng) < this.profile.defenseRate) cmds.push({ type: 'DEFEND', playerId: this.playerId });
-      }
-    }
+    cmds.push(...this.decide(state, p, now));
 
     const word = p.stack[0];
     if (!word) {

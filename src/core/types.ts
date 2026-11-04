@@ -11,7 +11,7 @@ export interface Word {
   id: number;
   text: string;
   garbage: boolean;
-  /** Ob in diesem Wort schon ein Fehler passiert ist (zählt dann nicht für die Combo). */
+  /** Ob in diesem Wort schon ein Fehler passiert ist (zählt dann weder für Combo noch Punkte). */
   hadError: boolean;
   errors: number;
   /** Tick des ersten Tastendrucks in diesem Wort, -1 = noch nicht begonnen. */
@@ -49,6 +49,14 @@ export interface PlayerStats {
   garbageCancelled: number;
   kos: number;
   maxCombo: number;
+  /** Insgesamt verdiente Punkte (ohne verfallene). */
+  pointsEarned: number;
+  /** Für Angriffe (Enter) ausgegebene Punkte. */
+  pointsAttack: number;
+  /** Für Abwehr (Tab) ausgegebene Punkte. */
+  pointsDefense: number;
+  /** Verdient, aber verfallen, weil das Maximum erreicht war. */
+  pointsLost: number;
 }
 
 export interface PlayerState {
@@ -59,7 +67,12 @@ export interface PlayerState {
   stack: Word[];
   /** Fortschritt im aktiven Wort. */
   cursor: number;
+  /** Fehlerfreie Wörter in Folge; bestimmt, wie schnell Punkte kommen. */
   combo: number;
+  /** Sichere Währung für Angriff (Enter) und Abwehr (Tab); max. `config.points.max`. */
+  points: number;
+  /** Fehlerfreie Wörter seit dem letzten Punkt (Tippfehler setzt auf 0). */
+  pointProgress: number;
   badges: number;
   strategy: TargetStrategy;
   targetId: PlayerId | null;
@@ -73,8 +86,6 @@ export interface PlayerState {
   koTick: number;
   koBy: PlayerId | null;
   placement: number;
-  /** Angriffs-Pool: so viele Wörter bereit; Leertaste schickt je eins, sonst automatisch bei autoTick. */
-  pendingAttack: { amount: number; loadTick: number; autoTick: number } | null;
   /** Position in der gemeinsamen Wortfolge (nächstes Wort für diesen Spieler). */
   seqIndex: number;
   /** Privater Zufall für Müllwörter. */
@@ -112,9 +123,9 @@ export type Command =
   | { type: 'CYCLE_STRATEGY'; playerId: PlayerId }
   /** Ziel direkt wählen (z. B. Zifferntaste); schaltet auf Strategie 'manual'. */
   | { type: 'SET_TARGET'; playerId: PlayerId; targetId: PlayerId }
-  /** Geladenen Angriff sofort abschicken (Leertaste). */
+  /** Alle Punkte als Angriff auf das aktuelle Ziel ausgeben (Enter). */
   | { type: 'SEND_ATTACK'; playerId: PlayerId }
-  /** Eingehenden Müll gegen Combo-Punkte abwehren (Tab, wenn Müll unterwegs ist). */
+  /** Eingehenden Müll gegen Punkte abwehren (Tab, wenn Müll unterwegs ist). */
   | { type: 'DEFEND'; playerId: PlayerId };
 
 /* ---------- Events (Ausgaben) ---------- */
@@ -125,13 +136,15 @@ export type GameEvent =
   | { type: 'KEY_ERROR'; playerId: PlayerId; wordId: number; index: number; key: string }
   | { type: 'WORD_CLEARED'; playerId: PlayerId; word: Word; combo: number }
   | { type: 'COMBO_BROKEN'; playerId: PlayerId; combo: number }
-  | { type: 'ATTACK_TRIGGERED'; playerId: PlayerId; amount: number; combo: number }
-  /** Angriff geladen (bzw. aufgestockt); geht spätestens bei autoTick raus. */
-  | { type: 'ATTACK_LOADED'; playerId: PlayerId; amount: number; total: number; autoTick: number }
-  /** Mit Tab abgewehrt: so viele Wörter, so viele Combo-Punkte bezahlt. */
-  | { type: 'DEFENDED'; playerId: PlayerId; amount: number; comboSpent: number }
+  /** Neuer Punkt verdient; `total` = Punkte danach. */
+  | { type: 'POINT_EARNED'; playerId: PlayerId; total: number }
+  /** Punkt verdient, aber verfallen (Maximum erreicht). */
+  | { type: 'POINT_LOST'; playerId: PlayerId; lost: number }
+  /** Mit Tab abgewehrt: so viele Wörter, so viele Punkte bezahlt. */
+  | { type: 'DEFENDED'; playerId: PlayerId; amount: number; pointsSpent: number }
   | { type: 'GARBAGE_CANCELLED'; playerId: PlayerId; from: PlayerId; amount: number }
-  | { type: 'ATTACK_SENT'; from: PlayerId; to: PlayerId; amount: number; garbageId: number; arriveTick: number }
+  /** Angriff mit Enter: `pointsSpent` Punkte ausgegeben, `amount` Müllwörter (inkl. Abzeichen-Bonus) unterwegs. */
+  | { type: 'ATTACK_SENT'; from: PlayerId; to: PlayerId; amount: number; pointsSpent: number; garbageId: number; arriveTick: number }
   | { type: 'GARBAGE_ARRIVED'; playerId: PlayerId; from: PlayerId; amount: number }
   | { type: 'TARGET_CHANGED'; playerId: PlayerId; targetId: PlayerId | null; strategy: TargetStrategy }
   | { type: 'PLAYER_KO'; playerId: PlayerId; by: PlayerId | null; placement: number }

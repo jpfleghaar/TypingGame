@@ -73,3 +73,72 @@ describe('BotController', () => {
     expect(a.durationMs).toBeLessThan(6 * 60_000);
   });
 });
+
+describe('Bot-Entscheidungen: angreifen, abwehren, sparen', () => {
+  /** Bot 0 gegen zwei Ziele; Tippen ist abgeschaltet (Startverzögerung sehr lang), damit nur Entscheidungen zählen. */
+  const setup = (over: Partial<ReturnType<typeof generateBotProfiles>[number]> = {}) => {
+    const state = createGame({ seed: 9, bank: BANK, config: { ...QUIET, initialWords: 4 }, players: [{ name: 'Bot' }, { name: 'A' }, { name: 'B' }] });
+    const profile = { ...generateBotProfiles(1)[0], sendDelayMs: 0, attackAt: 4, reserve: 2, defenseRate: 0, strategy: 'random' as const, ...over };
+    const bot = new BotController(0, profile, 9);
+    (bot as unknown as { nextKeyAt: number }).nextKeyAt = 1e12;
+    const me = state.players[0];
+    const run = (ticks: number) => {
+      const out: Command[] = [];
+      for (let i = 0; i < ticks; i++) {
+        const cmds = bot.poll(state);
+        out.push(...cmds);
+        step(state, BANK, cmds);
+      }
+      return out;
+    };
+    return { state, me, run };
+  };
+  const types = (cmds: Command[]) => cmds.map((c) => c.type);
+
+  it('spart unterhalb seiner Angriffsschwelle', () => {
+    const { me, run } = setup();
+    me.points = 3;
+    expect(types(run(30))).not.toContain('SEND_ATTACK');
+    expect(me.points).toBe(3);
+  });
+
+  it('greift ab seiner Schwelle an', () => {
+    const { me, run } = setup();
+    me.points = 4;
+    expect(types(run(30))).toContain('SEND_ATTACK');
+    expect(me.points).toBe(0);
+  });
+
+  it('behält eine Reserve, wenn der eigene Stapel voll wird', () => {
+    const { state, me, run } = setup();
+    me.points = 5; // Schwelle 4 + Reserve 2 = 6 nötig
+    while (me.stack.length < state.config.stackMax - 3) me.stack.push({ ...me.stack[0], id: 10_000 + me.stack.length });
+    expect(types(run(30))).not.toContain('SEND_ATTACK');
+  });
+
+  it('greift beim Maximum an, statt Punkte verfallen zu lassen', () => {
+    const { state, me, run } = setup({ attackAt: 99 });
+    me.points = state.config.points.max;
+    expect(types(run(30))).toContain('SEND_ATTACK');
+  });
+
+  it('spart, solange Müll unterwegs ist, und wehrt im Notfall immer ab', () => {
+    const { state, me, run } = setup({ defenseRate: 0 });
+    me.points = 5;
+    while (me.stack.length < state.config.stackMax - 1) me.stack.push({ ...me.stack[0], id: 20_000 + me.stack.length });
+    me.incoming.push({ id: 77, from: 1, amount: 3, words: ['a', 'b', 'c'], sentTick: state.tick, arriveTick: state.tick + 120 });
+    const cmds = types(run(130));
+    expect(cmds).not.toContain('SEND_ATTACK');
+    expect(cmds).toContain('DEFEND');
+    expect(me.points).toBe(2);
+  });
+
+  it('nutzt den Gnadenstoß, wenn das Ziel überlaufen würde', () => {
+    const { state, me, run } = setup({ attackAt: 99 });
+    me.points = 2;
+    run(1); // Ziel wird gewählt
+    const target = state.players[me.targetId!];
+    while (target.stack.length < state.config.stackMax - 1) target.stack.push({ ...target.stack[0], id: 30_000 + target.stack.length });
+    expect(types(run(30))).toContain('SEND_ATTACK');
+  });
+});

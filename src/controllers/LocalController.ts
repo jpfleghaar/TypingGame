@@ -8,8 +8,9 @@ type Pending = Command | { slot: number } | { tab: true };
  * Tastatur-Spieler. Sammelt Tastendrücke und gibt sie beim nächsten Tick ab.
  *
  * - Buchstaben: tippen
- * - Tab: Spam abwehren, wenn welcher unterwegs ist und die Combo reicht – sonst Ziel-Strategie wechseln
- * - Leertaste: geladenen Angriff sofort abschicken
+ * - Tab: Spam abwehren, wenn welcher unterwegs ist und Punkte da sind – sonst Ziel-Strategie wechseln
+ * - Enter: alle Punkte als Angriff ausgeben (1 Müllwort pro Punkt)
+ * - Leertaste: keine Funktion (damit niemand aus Gewohnheit nach jedem Wort angreift)
  * - 1–9, 0: Gegner auf Platz 1–10 direkt anvisieren (Wörter enthalten keine Ziffern)
  */
 export class LocalController implements Controller {
@@ -29,13 +30,15 @@ export class LocalController implements Controller {
       this.buffer.push({ tab: true });
       return;
     }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!e.repeat) this.buffer.push({ type: 'SEND_ATTACK', playerId: this.playerId });
+      return;
+    }
     // Nur druckbare Einzelzeichen; "Dead", "Shift", "F2" usw. werden ignoriert.
     if (e.key.length !== 1 || e.repeat) return;
     e.preventDefault();
-    if (e.key === ' ') {
-      this.buffer.push({ type: 'SEND_ATTACK', playerId: this.playerId });
-      return;
-    }
+    if (e.key === ' ') return; // Leertaste: bewusst ohne Funktion
     if (e.key >= '0' && e.key <= '9') {
       this.buffer.push({ slot: e.key === '0' ? 9 : Number(e.key) - 1 });
       return;
@@ -50,7 +53,7 @@ export class LocalController implements Controller {
     const me = state.players[this.playerId];
     for (const item of this.buffer) {
       if ('tab' in item) {
-        const canDefend = me.incoming.length > 0 && me.combo >= state.config.defense.comboCostPerWord;
+        const canDefend = me.incoming.length > 0 && me.points >= state.config.defense.pointsPerWord;
         out.push(canDefend ? { type: 'DEFEND', playerId: this.playerId } : { type: 'CYCLE_STRATEGY', playerId: this.playerId });
       } else if ('slot' in item) {
         const t = opponents[item.slot];

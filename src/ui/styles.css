@@ -117,7 +117,13 @@ kbd { font-family: var(--mono); background: var(--panel-2); border: 1px solid va
 .hud .stat { background: var(--panel); border: 1px solid var(--line); border-radius: calc(var(--u) * 0.5); padding: calc(var(--u) * 0.4) calc(var(--u) * 0.7); }
 .hud .stat b { display: block; font-size: calc(var(--u) * 1.4); font-variant-numeric: tabular-nums; }
 .hud .stat small { color: var(--muted); font-size: calc(var(--u) * 0.75); text-transform: uppercase; letter-spacing: 0.06em; }
-.hud .combo b { color: var(--good); }
+.hud.with-points { grid-template-columns: 1.3fr repeat(4, 1fr); }
+/* Combo = Tempo (neutral), Punkte = Währung (Akzentfarbe) – nicht verwechseln */
+.hud .combo b { color: var(--text); }
+.hud.with-points .stat small { white-space: nowrap; }
+.hud.with-points .stat { padding-inline: calc(var(--u) * 0.5); overflow: hidden; }
+.hud .points-stat { border-color: var(--send); box-shadow: 0 0 calc(var(--u) * 0.6) rgba(var(--send-rgb), 0.3); }
+.hud .points-stat b { color: var(--send); }
 .target-line { display: flex; justify-content: space-between; color: var(--muted); font-size: calc(var(--u) * 0.95); }
 .target-line strong { color: var(--text); }
 
@@ -463,8 +469,7 @@ tr.ko-me td:nth-child(2)::after { content: ' ✝'; color: var(--danger); }
   text-transform: uppercase; letter-spacing: 0.06em; background: rgba(9, 12, 18, 0.9); border: 1px solid var(--line);
 }
 .prompt.send { border-color: rgb(var(--good-rgb)); color: var(--text); box-shadow: 0 0 calc(var(--u, 16px) * 0.7) rgba(var(--good-rgb), 0.4); }
-.prompt .prompt-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(var(--good-rgb), 0.2); }
-.prompt .prompt-bar i { display: block; height: 100%; background: rgb(var(--good-rgb)); }
+.prompt.send.full { background: rgba(var(--good-rgb), 0.22); font-weight: bold; }
 .prompt.defend { color: var(--muted); }
 .prompt.defend.ready { border-color: rgb(var(--danger-rgb)); color: var(--text); animation: defend-pulse 600ms ease-in-out infinite alternate; }
 .prompt.defend.ready kbd { color: var(--danger); }
@@ -472,10 +477,59 @@ tr.ko-me td:nth-child(2)::after { content: ' ✝'; color: var(--danger); }
   from { box-shadow: 0 0 0 rgba(var(--danger-rgb), 0); }
   to { box-shadow: 0 0 calc(var(--u, 16px) * 1) rgba(var(--danger-rgb), 0.7); }
 }
-@media (prefers-reduced-motion: reduce) { .prompt.defend.ready { animation: none; } }
-.reduced-fx .prompt.defend.ready { animation: none; }
 
-/* Wörter, die der geladene Angriff mitnimmt (auch Spam kann zurückgeschickt werden) */
+/* ---------- Punkte-Leiste rechts neben dem Posteingang ---------- */
+.board.with-points { grid-template-columns: calc(var(--u) * 0.9) 1fr calc(var(--u) * 3.6); }
+.points {
+  display: flex; flex-direction: column; align-items: stretch; gap: calc(var(--u) * 0.35);
+  padding: calc(var(--u) * 0.45) calc(var(--u) * 0.35); border-radius: calc(var(--u) * 0.55);
+  background: rgba(9, 12, 18, 0.9); border: 1px solid rgba(var(--send-rgb), 0.45); color: var(--send); text-align: center;
+}
+.points-label { font-size: calc(var(--u) * 0.62); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.points-count { font-size: calc(var(--u) * 1.15); font-variant-numeric: tabular-nums; line-height: 1; }
+.points-segs { flex: 1; display: flex; flex-direction: column-reverse; gap: calc(var(--u) * 0.25); min-height: 0; }
+.points-segs i {
+  flex: 1; border-radius: calc(var(--u) * 0.2); border: 1px solid rgba(var(--send-rgb), 0.35); background: rgba(var(--send-rgb), 0.06);
+  transition: background 120ms, box-shadow 120ms;
+}
+.points-segs i.on { background: var(--send); border-color: var(--send); box-shadow: 0 0 calc(var(--u) * 0.5) rgba(var(--send-rgb), 0.6); }
+.points-prog { height: calc(var(--u) * 0.32); border-radius: 999px; background: rgba(var(--send-rgb), 0.15); overflow: hidden; }
+.points-prog i { display: block; height: 100%; width: 0; background: var(--send); transition: width 120ms; }
+.points-rate { font-size: calc(var(--u) * 0.58); color: var(--muted); line-height: 1.15; }
+/* Maximum erreicht: deutlich hervorheben – weitere Punkte verfallen */
+.points.max { border-color: var(--send); background: rgba(var(--send-rgb), 0.16); animation: points-max 520ms ease-in-out infinite alternate; }
+.points.max .points-count { font-weight: 700; letter-spacing: 0.08em; }
+.points.max .points-rate { color: var(--send); }
+.points.gain .points-count { animation: points-gain 260ms ease-out; }
+.points.overflow { animation: points-overflow 420ms ease-out; }
+.points { position: relative; }
+.points-count { font-weight: 700; }
+.points-pop {
+  position: absolute; left: 50%; top: calc(var(--u) * -1.4); transform: translateX(-50%); white-space: nowrap; pointer-events: none;
+  font-size: calc(var(--u) * 0.8); font-weight: 700; color: var(--send); text-shadow: 0 0 6px #000, 0 0 10px rgba(var(--send-rgb), 0.6);
+  animation: points-pop 900ms ease-out forwards;
+}
+@keyframes points-pop { 0% { opacity: 0; transform: translate(-50%, 6px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
+@keyframes points-max {
+  from { box-shadow: 0 0 calc(var(--u) * 0.4) rgba(var(--send-rgb), 0.35); }
+  to { box-shadow: 0 0 calc(var(--u) * 1.4) rgba(var(--send-rgb), 0.95); }
+}
+@keyframes points-gain { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+@keyframes points-overflow { 0% { background: rgba(var(--danger-rgb), 0.45); border-color: rgb(var(--danger-rgb)); } 100% { background: rgba(var(--send-rgb), 0.16); } }
+
+/* Auswertung: Punkte-Bilanz */
+.points-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.6rem; }
+.pt-tile { background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
+.pt-tile b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; color: var(--send); }
+.pt-tile.combo b { color: var(--good); }
+.pt-tile.lost b { color: var(--danger); }
+.pt-tile small { color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.72rem; }
+
+@media (prefers-reduced-motion: reduce) { .points-pop { animation: none; opacity: 1; } .prompt.defend.ready, .points.max, .points.gain .points-count, .points.overflow { animation: none; } }
+.reduced-fx .points-pop { animation: none; opacity: 1; }
+.reduced-fx .prompt.defend.ready, .reduced-fx .points.max, .reduced-fx .points.gain .points-count, .reduced-fx .points.overflow { animation: none; }
+
+/* Wörter, die ein Angriff mit Enter mitnimmt (auch Spam kann zurückgeschickt werden) */
 /* Gleiche Farbe wie die Combo: die Akzentfarbe des Themes (Platine: Bernstein) */
 :root { --send: var(--good); --send-rgb: var(--good-rgb); }
 .row.to-send, .row.garbage.to-send { color: var(--send); text-shadow: 0 0 0.5em rgba(var(--send-rgb), 0.35); }
