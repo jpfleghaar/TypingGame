@@ -93,7 +93,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
     <section id="h-abwehr">
       <h2>Abwehr</h2>
       <p><b>Mit Tab:</b> Kommt Spam auf dich zu, erscheint unter dem Posteingang <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
-      ${cfg.defense.comboCostPerWord} Combo-Punkte; ein Druck wehrt so viel ab, wie deine Combo bezahlen kann (älteste Wörter zuerst).
+      ${cfg.defense.comboCostPerWord} ${cfg.defense.comboCostPerWord === 1 ? 'Combo-Punkt' : 'Combo-Punkte'}; ein Druck wehrt so viel ab, wie deine Combo bezahlen kann (älteste Wörter zuerst).
       Reicht die Combo nicht, wechselt <kbd>Tab</kbd> wie gewohnt die Strategie.</p>
       <p><b>Mit einem Angriff:</b> Schickst du selbst einen Angriff ab, während Müll zu dir unterwegs ist, wird zuerst <b>der eingehende Müll verrechnet</b>.
       Nur der Rest geht an deinen Gegner.</p>

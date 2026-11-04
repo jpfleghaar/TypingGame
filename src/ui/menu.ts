@@ -268,7 +268,7 @@ export function renderMenu(
     <kbd>Leertaste</kbd> schickt <b>ein Wort</b> daraus, sonst geht alle ${cfg.attack.autoSendIntervalMs / 1000} s automatisch eins raus. Dabei wandern deine
     <b>längsten Wörter</b> als Spam zu deinem Ziel und verschwinden aus deinem Posteingang – welche das sind, ist <b style="color: var(--send)">bernsteinfarben</b> markiert.</p>
     <p><b>Abwehren:</b> Kommt Spam auf dich zu, erscheint <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
-    ${cfg.defense.comboCostPerWord} Combo-Punkte. Ein abgeschickter Angriff verrechnet außerdem zuerst den Spam, der gerade zu dir unterwegs ist.</p>`;
+    ${cfg.defense.comboCostPerWord} ${cfg.defense.comboCostPerWord === 1 ? 'Combo-Punkt' : 'Combo-Punkte'}. Ein abgeschickter Angriff verrechnet außerdem zuerst den Spam, der gerade zu dir unterwegs ist.</p>`;
   const table = el('div', 'key-table');
   const row = (keys: string, what: string) => {
     const k = el('span', 'key-cell');

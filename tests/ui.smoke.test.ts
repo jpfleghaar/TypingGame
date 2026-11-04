@@ -74,8 +74,8 @@ describe('UI-Rauchtest', () => {
     expect(send.textContent).toContain('2 bereit');
     expect(defend.hidden).toBe(false);
     expect(defend.classList.contains('ready')).toBe(true);
-    expect(defend.textContent).toContain('2×'); // 6 Combo / 3 pro Wort
-    me.combo = 1;
+    expect(defend.textContent).toContain('3×'); // 6 Combo, 1 pro Wort, 3 Wörter unterwegs
+    me.combo = 0;
     frame();
     expect(defend.classList.contains('ready')).toBe(false);
 

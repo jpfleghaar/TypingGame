@@ -154,26 +154,28 @@ describe('Angriffs-Pool (Leertaste) und Abwehr (Tab)', () => {
     expect(s.players[0].pendingAttack).toBeNull();
   });
 
-  it('Tab-Abwehr kostet 3 Combo-Punkte pro Wort, älteste zuerst', () => {
-    const s = newGame(3, 2, LOADED);
-    const me = s.players[0];
-    me.combo = 7;
-    me.incoming.push({ id: 1, from: 1, amount: 3, words: ['a', 'b', 'c'], sentTick: 0, arriveTick: 9999 });
-    const events = step(s, BANK, [{ type: 'DEFEND', playerId: 0 }]);
-    // 7 Punkte reichen für 2 Wörter
-    expect(events.find((e) => e.type === 'DEFENDED')).toMatchObject({ amount: 2, comboSpent: 6 });
-    expect(me.combo).toBe(1);
-    expect(me.incoming[0].amount).toBe(1);
-  });
-
-  it('ohne genug Combo passiert bei Tab-Abwehr nichts', () => {
+  it('Tab-Abwehr kostet 1 Combo-Punkt pro Wort, älteste zuerst', () => {
     const s = newGame(3, 2, LOADED);
     const me = s.players[0];
     me.combo = 2;
-    me.incoming.push({ id: 1, from: 1, amount: 1, sentTick: 0, arriveTick: 9999 });
+    me.incoming.push({ id: 1, from: 1, amount: 3, words: ['a', 'b', 'c'], sentTick: 0, arriveTick: 9999 });
     const events = step(s, BANK, [{ type: 'DEFEND', playerId: 0 }]);
-    expect(events.some((e) => e.type === 'DEFENDED')).toBe(false);
-    expect(me.combo).toBe(2);
+    // 2 Punkte reichen für 2 Wörter
+    expect(events.find((e) => e.type === 'DEFENDED')).toMatchObject({ amount: 2, comboSpent: 2 });
+    expect(me.combo).toBe(0);
+    expect(me.incoming[0].amount).toBe(1);
+  });
+
+  it('schon 1 Combo-Punkt reicht zum Abwehren, bei 0 passiert nichts', () => {
+    const s = newGame(3, 2, LOADED);
+    const me = s.players[0];
+    me.incoming.push({ id: 1, from: 1, amount: 1, sentTick: 0, arriveTick: 9999 });
+    me.combo = 0;
+    expect(step(s, BANK, [{ type: 'DEFEND', playerId: 0 }]).some((e) => e.type === 'DEFENDED')).toBe(false);
     expect(me.incoming).toHaveLength(1);
+    me.combo = 1;
+    expect(step(s, BANK, [{ type: 'DEFEND', playerId: 0 }]).some((e) => e.type === 'DEFENDED')).toBe(true);
+    expect(me.incoming).toHaveLength(0);
+    expect(me.combo).toBe(0);
   });
 });

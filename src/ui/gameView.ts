@@ -577,7 +577,7 @@ export class GameView {
       const can = Math.min(incoming, Math.floor(me.combo / cost));
       this.defendChip.classList.toggle('ready', can > 0);
       this.defendText.textContent =
-        can > 0 ? ` Abwehren ${can}× (−${can * cost} Combo)` : ` Abwehr ab ${cost} Combo`;
+        can > 0 ? ` Abwehren ${can}× (−${can * cost} Combo)` : ' Keine Combo zum Abwehren';
     }
   }
 

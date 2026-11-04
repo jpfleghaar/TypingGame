@@ -132,7 +132,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   },
 
   defense: {
-    comboCostPerWord: 3,
+    comboCostPerWord: 1,
   },
 
   combo: {
