@@ -93,3 +93,58 @@ describe('applyBadgeBonus', () => {
     expect(sum / n).toBeLessThan(1.3);
   });
 });
+
+describe('Neues Müll-Konzept: eigene längste Wörter werden verschoben', () => {
+  const warn = () => msToTicks(DEFAULT_CONFIG.garbage.warningMs, DEFAULT_CONFIG) + 1;
+
+  it('das längste eigene Wort (nicht das aktive) wandert zum Gegner', () => {
+    const s = newGame(3, 8, QUIET); // 3 Spieler: noch kein Finale
+    s.players[0].targetId = 1;
+    s.players[0].strategy = 'manual';
+    typeWord(s, 0);
+    typeWord(s, 0);
+    // Erwartung: nach dem 3. Wort ist stack[0] aktiv, von stack[1..] das längste geht raus
+    const after = s.players[0].stack.slice(1);
+    const candidates = after.slice(1);
+    const longest = [...candidates].sort((a, b) => b.text.length - a.text.length)[0];
+    typeWord(s, 0);
+    const pkt = s.players[1].incoming[0];
+    expect(pkt.words).toEqual([longest.text]);
+    expect(s.players[0].stack.some((w) => w.id === longest.id)).toBe(false);
+    idle(s, warn());
+    expect(s.players[1].stack[1].text).toBe(longest.text);
+    expect(s.players[1].stack[1].garbage).toBe(true);
+  });
+
+  it('zu wenige eigene Wörter: Rest wird mit langen Listenwörtern aufgefüllt', () => {
+    const s = newGame(3, 8, { ...QUIET, initialWords: 3 });
+    s.players[0].targetId = 1;
+    s.players[0].strategy = 'manual';
+    for (let i = 0; i < 3; i++) typeWord(s, 0); // Stapel ist danach leer
+    const pkt = s.players[1].incoming[0];
+    expect(pkt.words).toHaveLength(1);
+    expect(pkt.words![0].length).toBeGreaterThan(5);
+  });
+
+  it('Groß-/Kleinschreibung wird erst im Finale (2 Spieler) gemischt', () => {
+    for (const players of [3, 2]) {
+      const s = newGame(players, 8, QUIET);
+      s.players[0].targetId = 1;
+      s.players[0].strategy = 'manual';
+      for (let i = 0; i < 3; i++) typeWord(s, 0);
+      const sent = s.players[1].incoming[0].words![0];
+      idle(s, warn());
+      const arrived = s.players[1].stack[1].text;
+      expect(arrived.toLowerCase()).toBe(sent.toLowerCase());
+      if (players === 3) expect(arrived).toBe(sent);
+      else expect(arrived).not.toBe(sent);
+    }
+  });
+
+  it('Verrechnung verbraucht auch die mitgeschickten Wörter', () => {
+    const incoming = [{ id: 1, from: 4, amount: 3, words: ['a', 'b', 'c'], sentTick: 0, arriveTick: 10 }];
+    cancelIncoming(incoming, 2);
+    expect(incoming[0].amount).toBe(1);
+    expect(incoming[0].words).toEqual(['c']);
+  });
+});

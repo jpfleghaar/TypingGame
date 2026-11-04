@@ -1,11 +1,9 @@
-import { THEME_MIXED, THEME_RANDOM } from '../core';
+import { DEFAULT_CONFIG, THEME_MIXED, THEME_RANDOM } from '../core';
 import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
 import { VOCAB, WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
 import type { AvSettings } from './avSettings';
 import { el } from './labels';
 import { systemPrefersReducedMotion } from './motion';
-import { THEMES, type ThemeId } from '../theme/themes';
-import { clearPractice, listPractice, removePractice } from './practiceStore';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
 export const DEFAULT_BOTS = DEFAULT_BOT_FIELD.count;
@@ -73,32 +71,6 @@ function segmented<T extends string>(options: [T, string][], value: T, onChange:
 export interface AvHooks {
   settings: AvSettings;
   onChange: (s: AvSettings) => void;
-}
-
-/** Theme und Layout. */
-export function renderLookControls(av: AvHooks): HTMLElement {
-  const form = el('div', 'form');
-  const theme = segmented<ThemeId>(
-    Object.values(THEMES).map((t) => [t.id, t.label] as [ThemeId, string]),
-    av.settings.theme,
-    (v) => {
-      av.settings.theme = v;
-      av.onChange(av.settings);
-    },
-  );
-  const layout = segmented<'center' | 'split'>(
-    [
-      ['center', 'Gegner links & rechts'],
-      ['split', 'Wörter links, Gegner rechts'],
-    ],
-    av.settings.layout,
-    (v) => {
-      av.settings.layout = v;
-      av.onChange(av.settings);
-    },
-  );
-  form.append(el('span', undefined, 'Theme'), theme, el('span', undefined, 'Layout'), layout);
-  return form;
 }
 
 /** Lautstärke, Stumm und Effekte – im Menü und als Baustein wiederverwendbar. */
@@ -228,7 +200,6 @@ export function renderMenu(
       prefs.language = v;
       renderThemes();
       updateLearnRow();
-      renderPractice();
     },
   );
 
@@ -282,81 +253,45 @@ export function renderMenu(
   setup.append(form, actions);
   updateLearnRow();
 
-  /* --- Übungsliste --- */
-  const practice = el('div', 'card');
-  const renderPractice = () => {
-    const entries = listPractice(typingLanguage(prefs.language));
-    practice.replaceChildren(el('h2', undefined, `Übungsliste (${entries.length})`));
-    if (entries.length === 0) {
-      practice.append(el('p', 'empty', 'Noch leer. Nach jeder Runde landen hier Wörter, die dir schwerer fielen als dein Durchschnitt.'));
-      return;
-    }
-    const ul = el('ul', 'practice-list');
-    for (const e of entries) {
-      const li = el('li', undefined, e.text);
-      li.title = `Score ${e.score.toFixed(2)} · ${e.seen}× auffällig`;
-      const x = el('button', undefined, '×');
-      x.type = 'button';
-      x.setAttribute('aria-label', `${e.text} entfernen`);
-      x.addEventListener('click', () => {
-        removePractice(typingLanguage(prefs.language), e.text);
-        renderPractice();
-      });
-      li.append(x);
-      ul.append(li);
-    }
-    const row = el('div', 'actions');
-    const train = el('button', 'btn', 'Üben (ohne Gegner)');
-    train.type = 'button';
-    train.disabled = entries.length < 3;
-    train.addEventListener('click', () => {
-      prefs.playerName = name.value.trim() || 'Du';
-      savePrefs(prefs);
-      onStart({
-        mode: 'practice',
-        language: typingLanguage(prefs.language),
-        theme: THEME_MIXED,
-        seed: randomSeed(),
-        botCount: 0,
-        playerName: prefs.playerName,
-        practiceWords: entries.map((x) => x.text),
-      });
-    });
-    const clear = el('button', 'btn small', 'Liste leeren');
-    clear.type = 'button';
-    let armed = false;
-    clear.addEventListener('click', () => {
-      if (!armed) {
-        armed = true;
-        clear.textContent = 'Wirklich leeren?';
-        return;
-      }
-      clearPractice(typingLanguage(prefs.language));
-      renderPractice();
-    });
-    row.append(train, clear);
-    practice.append(ul, row);
-  };
-  renderPractice();
-
   /* --- Steuerung --- */
-  const help = el('div', 'card');
+  const cfg = DEFAULT_CONFIG;
+  const combos = cfg.combo.thresholds.map((t) => t.combo).join(', ');
+  const help = el('div', 'card controls');
   help.append(el('h2', undefined, 'Steuerung'));
-  const keys = el('div', 'keys');
-  keys.innerHTML = `
-    Tippe immer das <b>unterste</b> Wort. Groß-/Kleinschreibung zählt.<br>
-    <kbd>Tab</kbd> Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)<br>
-    <kbd>F4</kbd> Ton an/aus · <kbd>F2</kbd> Debug-Anzeige · <kbd>Esc</kbd> Runde abbrechen<br>
-    Combo 3 / 6 / 10 schickt Müll. Eigene Angriffe verrechnen zuerst eingehenden Müll.<br>
-    Alles im Detail steht in der <b>Anleitung</b> oben rechts.`;
-  help.append(keys);
+  const intro = el('div', 'controls-intro');
+  intro.innerHTML = `
+    <p><b>Ziel:</b> Halte deinen Posteingang leer. Neue Wörter kommen oben dazu – sind mehr als ${cfg.stackMax} drin,
+    bist du raus. Wer als Letzter übrig ist, gewinnt.</p>
+    <p><b>Tippen:</b> Tippe immer das <b>unterste, große Wort</b>. Groß-/Kleinschreibung zählt, Enter brauchst du nicht.
+    Ein Tippfehler setzt deine Combo zurück, das Wort bleibt stehen – einfach mit dem richtigen Buchstaben weiter.</p>
+    <p><b>Angreifen:</b> Fehlerfreie Wörter bauen deine Combo auf. Bei Combo ${combos} wird ein Angriff <b>geladen</b>:
+    <kbd>Leertaste</kbd> schickt <b>ein Wort</b> daraus, sonst geht alle ${cfg.attack.autoSendIntervalMs / 1000} s automatisch eins raus. Dabei wandern deine
+    <b>längsten Wörter</b> als Spam zu deinem Ziel und verschwinden aus deinem Posteingang – welche das sind, ist <b style="color: var(--send)">bernsteinfarben</b> markiert.</p>
+    <p><b>Abwehren:</b> Kommt Spam auf dich zu, erscheint <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
+    ${cfg.defense.comboCostPerWord} Combo-Punkte. Ein abgeschickter Angriff verrechnet außerdem zuerst den Spam, der gerade zu dir unterwegs ist.</p>`;
+  const table = el('div', 'key-table');
+  const row = (keys: string, what: string) => {
+    const k = el('span', 'key-cell');
+    k.innerHTML = keys;
+    const w = el('span', 'key-what');
+    w.innerHTML = what;
+    table.append(k, w);
+  };
+  row('<kbd>A</kbd>–<kbd>Z</kbd>, <kbd>Ä</kbd> …', 'Wort tippen');
+  row('<kbd>Leertaste</kbd>', `Ein Wort aus dem Angriffs-Pool abschicken – ohne Leertaste geht alle ${cfg.attack.autoSendIntervalMs / 1000} s automatisch eins raus`);
+  row('<kbd>Tab</kbd>', 'Kommt Spam und reicht die Combo: abwehren – sonst Ziel-Strategie wechseln (Zufall → Angreifer → Schwache → K.O.-Jäger)');
+  row('<kbd>1</kbd>–<kbd>5</kbd> / <kbd>6</kbd>–<kbd>0</kbd>', 'Gegner direkt anvisieren – links von oben 1–5, rechts von oben 6–0');
+  row('<kbd>F4</kbd>', 'Ton an/aus (auch per Klick auf „Ton“ im Spiel)');
+  row('<kbd>Esc</kbd>', 'Zurück zum Menü – im Spiel mit Nachfrage, das Spiel pausiert so lange');
+  row('<kbd>F2</kbd>', 'Debug-Anzeige');
+  const more = el('p', 'keys');
+  more.innerHTML = 'Alles im Detail – Strategien, Abzeichen, Finale – steht in der <b>Anleitung</b> oben.';
+  help.append(intro, table, more);
 
   const avCard = el('div', 'card');
-  const avControls = renderAvControls(av);
-  avControls.style.marginTop = '0.9rem';
-  avCard.append(el('h2', undefined, 'Darstellung & Sound'), renderLookControls(av), avControls);
+  avCard.append(el('h2', undefined, 'Sound'), renderAvControls(av));
 
-  menu.append(head, setup, practice, avCard, help);
+  menu.append(head, setup, help, avCard);
   root.append(menu);
 
   root.onkeydown = (e) => {

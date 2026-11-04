@@ -38,6 +38,21 @@ export interface GameConfig {
     end: { short: number; medium: number; long: number };
   };
 
+  /**
+   * Angriffe landen in einem Pool: Jede Leertaste schickt EIN Wort daraus,
+   * ohne Leertaste geht alle `autoSendIntervalMs` automatisch ein Wort raus.
+   * 0 = der ganze Pool geht sofort in einem Angriff raus (klassisch, z. B. für Tests).
+   */
+  attack: {
+    autoSendIntervalMs: number;
+  };
+
+  /** Abwehr mit Tab: eingehende Müllwörter gegen Combo-Punkte abwehren. */
+  defense: {
+    /** So viele Combo-Punkte kostet ein abgewehrtes Wort. */
+    comboCostPerWord: number;
+  };
+
   combo: {
     /** Exakte Combo-Stufen, die einen Angriff auslösen. */
     thresholds: ComboThreshold[];
@@ -50,20 +65,15 @@ export interface GameConfig {
   garbage: {
     /** Vorwarnzeit, bevor Müll im Stapel landet. */
     warningMs: number;
-    /**
-     * Müll wird im Lauf der Runde schwerer: Schwierigkeit steigt linear von
-     * startDifficulty (Rundenbeginn) auf 1 (nach rampMs). Alle Chancen unten
-     * gelten bei voller Schwierigkeit und werden mit ihr multipliziert.
-     * Bei Schwierigkeit 0 ist Müll ein normales mittellanges/langes Wort.
+    /*
+     * Müll = die längsten Wörter aus dem Stapel des Angreifers. Sie werden
+     * VERSCHOBEN (verlassen den Stapel des Angreifers). Das aktive Wort bleibt.
+     * Hat der Angreifer zu wenige, wird mit langen Wörtern aus der Liste aufgefüllt.
      */
-    startDifficulty: number;
-    rampMs: number;
-    /** Wahrscheinlichkeit für ein Kompositum aus zwei Wörtern (z. B. "MondKrater"). */
-    compoundChance: number;
-    /** Wahrscheinlichkeit für ein Monster-Wort aus der Müll-Liste (z. B. "Donaudampfschifffahrt"). */
-    monsterChance: number;
-    /** Wahrscheinlichkeit, dass zusätzlich ein Buchstabe die Groß/Kleinschreibung tauscht. */
-    caseFlipChance: number;
+    /** Ab so wenigen lebenden Spielern (Finale) wird die Groß-/Kleinschreibung gemischt. */
+    finaleAtAlive: number;
+    /** So viele Buchstaben tauschen im Finale je Müllwort die Groß-/Kleinschreibung. */
+    finaleCaseFlips: number;
   };
 
   badges: {
@@ -104,8 +114,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   initialWords: 3,
 
   spawn: {
-    startIntervalMs: 6500,
-    endIntervalMs: 1000,
+    startIntervalMs: 5900,
+    endIntervalMs: 920,
     rampDurationMs: 4 * 60_000,
     rampCurve: 2.5,
     overtimeFactorPerMinute: 0.8,
@@ -115,6 +125,14 @@ export const DEFAULT_CONFIG: GameConfig = {
   difficulty: {
     start: { short: 0.6, medium: 0.35, long: 0.05 },
     end: { short: 0.25, medium: 0.45, long: 0.3 },
+  },
+
+  attack: {
+    autoSendIntervalMs: 5000,
+  },
+
+  defense: {
+    comboCostPerWord: 3,
   },
 
   combo: {
@@ -129,11 +147,8 @@ export const DEFAULT_CONFIG: GameConfig = {
 
   garbage: {
     warningMs: 3000,
-    startDifficulty: 0.05,
-    rampMs: 3.5 * 60_000,
-    compoundChance: 0.45,
-    monsterChance: 0.35,
-    caseFlipChance: 0.4,
+    finaleAtAlive: 2,
+    finaleCaseFlips: 2,
   },
 
   badges: {

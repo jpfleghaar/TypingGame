@@ -16,7 +16,9 @@ const DEFAULTS: AvSettings = { volume: 0.6, muted: false, reducedFx: false, them
 export function loadAv(): AvSettings {
   try {
     const s = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<AvSettings>) };
-    if (!THEMES[s.theme]) s.theme = DEFAULT_THEME;
+    // Theme-Auswahl ist derzeit nicht im Menü: immer das Standard-Theme (Platine).
+    // Das Feld bleibt für spätere Level mit eigenem Theme.
+    if (!THEMES[s.theme] || s.theme !== DEFAULT_THEME) s.theme = DEFAULT_THEME;
     return s;
   } catch {
     return { ...DEFAULTS };

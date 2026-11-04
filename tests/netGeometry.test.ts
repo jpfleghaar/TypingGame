@@ -101,3 +101,16 @@ describe('Polylinien', () => {
     expect(pts).toEqual([{ x: 0, y: 0 }, { x: 15, y: 0 }, { x: 20, y: 5 }, { x: 20, y: 20 }]);
   });
 });
+
+describe('Platine: Platz → Anschluss (Zifferntasten links 1–5, rechts 6–0)', () => {
+  it('Plätze 0–4 = linke Spalte von oben, 5–9 = rechte Spalte von oben', async () => {
+    const { padIndexForSlot, PCB_LAYOUT } = await import('../src/fx/pcb/board');
+    const pads = Array.from({ length: 10 }, (_, i) => PCB_LAYOUT.pads[padIndexForSlot(i)]);
+    expect(pads.slice(0, 5).every((p) => p.side === 'left')).toBe(true);
+    expect(pads.slice(5).every((p) => p.side === 'right')).toBe(true);
+    for (const col of [pads.slice(0, 5), pads.slice(5)]) {
+      for (let i = 1; i < col.length; i++) expect(col[i].pad.y).toBeGreaterThan(col[i - 1].pad.y);
+    }
+    expect(new Set(pads.map((p) => p.id)).size).toBe(10);
+  });
+});

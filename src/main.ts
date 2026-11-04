@@ -86,6 +86,15 @@ function applyMotion(): void {
 applyMotion();
 onSystemMotionChange(applyMotion);
 
+/** Ton an/aus – per F4 oder Klick auf "Ton" im Spiel. */
+function toggleSound(): void {
+  audio.unlock();
+  av.muted = audio.toggleMute();
+  saveAv(av);
+  view?.setAudioStatus(audioStatus());
+  if (current === 'menu') renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
+}
+
 function audioStatus(): string {
   return audio.muted ? 'stumm' : `${Math.round(audio.volume * 100)} %`;
 }
@@ -112,7 +121,32 @@ function closeOverlay(): void {
   overlay = null;
 }
 
+/* ---------- Zuschauen nach dem eigenen K.O. ---------- */
+let spectateBar: HTMLElement | null = null;
+
+function hideSpectateBar(): void {
+  spectateBar?.remove();
+  spectateBar = null;
+}
+
+/** Feste Leiste beim Zuschauen: jederzeit zur Auswertung oder ins Menü. */
+function showSpectateBar(s: Session): void {
+  hideSpectateBar();
+  const bar = el('div', 'spectate-bar');
+  bar.setAttribute('role', 'region');
+  bar.setAttribute('aria-label', 'Zuschauer-Modus');
+  const results = el('button', 'btn primary', 'Zur Auswertung');
+  const menu = el('button', 'btn', 'Zurück zum Menü');
+  results.type = menu.type = 'button';
+  results.addEventListener('click', () => fastForward(s));
+  menu.addEventListener('click', toMenu);
+  bar.append(el('span', 'spectate-label', 'Zuschauer-Modus'), results, menu);
+  document.body.append(bar);
+  spectateBar = bar;
+}
+
 function teardown(): void {
+  hideSpectateBar();
   countdown?.cancel();
   countdown = null;
   debug?.destroy();
@@ -122,6 +156,7 @@ function teardown(): void {
 }
 
 function toMenu(): void {
+  closeConfirm(false);
   teardown();
   session?.runner.stop();
   session = null;
@@ -153,6 +188,9 @@ function startGame(settings: SessionSettings): void {
     svgLinks: theme.renderer === 'classic',
     nodeLabels: theme.texts.nodeLabels,
     texts: theme.texts.ui,
+    onToggleMute: toggleSound,
+    onMenu: requestQuit,
+    onCardHit: (_id, amount) => audio.attackHit(amount),
     volume: {
       value: av.volume,
       onInput: (vol) => {
@@ -217,16 +255,74 @@ function startGame(settings: SessionSettings): void {
   );
 }
 
+/* ---------- Aufgeben-Abfrage ---------- */
+let confirmBox: HTMLElement | null = null;
+
+function closeConfirm(resume: boolean): void {
+  confirmBox?.remove();
+  confirmBox = null;
+  if (resume && session && !session.runner.state.finished) session.runner.start();
+}
+
+/** "Menü" im Spiel: nachfragen, solange es etwas zu verlieren gibt. */
+function requestQuit(): void {
+  const s = session;
+  if (!s || current !== 'game') return;
+  const me = s.runner.state.players[s.humanId];
+  // Countdown läuft noch oder schon K.O.: nichts zu verlieren
+  if (countdown || !me.alive || s.runner.state.finished) {
+    toMenu();
+    return;
+  }
+  if (confirmBox) return;
+  s.runner.pause();
+  const royale = s.settings.mode === 'royale';
+  confirmBox = el('div', 'overlay confirm');
+  const card = el('div', 'card');
+  card.setAttribute('role', 'alertdialog');
+  card.setAttribute('aria-modal', 'true');
+  const quit = el('button', 'btn danger', royale ? 'Aufgeben' : 'Runde beenden');
+  const stay = el('button', 'btn primary', 'Weiterspielen');
+  quit.type = stay.type = 'button';
+  quit.addEventListener('click', () => {
+    closeConfirm(false);
+    if (royale) toMenu();
+    else finish(s);
+  });
+  stay.addEventListener('click', () => closeConfirm(true));
+  const actions = el('div', 'actions');
+  actions.append(stay, quit);
+  card.append(
+    el('h2', undefined, royale ? 'Wirklich aufgeben?' : 'Runde beenden?'),
+    el(
+      'p',
+      'keys',
+      royale
+        ? 'Die Runde wird abgebrochen und nicht gewertet. Das Spiel ist pausiert.'
+        : 'Du bekommst danach die Auswertung dieser Runde. Das Spiel ist pausiert.',
+    ),
+    actions,
+  );
+  confirmBox.append(card);
+  document.body.append(confirmBox);
+  stay.focus();
+}
+
 function showKoOverlay(s: Session, placement: number): void {
   overlay = el('div', 'overlay');
   const card = el('div', 'card');
   const watch = el('button', 'btn', 'Weiter zuschauen');
   const skip = el('button', 'btn primary', 'Zur Auswertung');
-  watch.type = skip.type = 'button';
-  watch.addEventListener('click', closeOverlay);
+  const menu = el('button', 'btn', 'Zurück zum Menü');
+  watch.type = skip.type = menu.type = 'button';
+  watch.addEventListener('click', () => {
+    closeOverlay();
+    showSpectateBar(s);
+  });
   skip.addEventListener('click', () => fastForward(s));
+  menu.addEventListener('click', toMenu);
   const actions = el('div', 'actions');
-  actions.append(skip, watch);
+  actions.append(skip, watch, menu);
   card.append(el('h2', undefined, theme.texts.koSelf), el('p', 'keys', `Du bist auf Platz ${placement} gelandet.`), actions);
   overlay.append(card);
   document.body.append(overlay);
@@ -271,11 +367,7 @@ let lastSettings: SessionSettings | null = null;
 window.addEventListener('keydown', (e) => {
   if (e.key === 'F4') {
     e.preventDefault();
-    audio.unlock();
-    av.muted = audio.toggleMute();
-    saveAv(av);
-    view?.setAudioStatus(audioStatus());
-    if (current === 'menu') renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
+    toggleSound();
     return;
   }
   if (e.key === 'F2') {
@@ -285,12 +377,13 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape') {
+    if (confirmBox) {
+      closeConfirm(true); // zweites Esc = weiterspielen
+      return;
+    }
     if (overlay) closeOverlay();
-    if (current === 'game' && session) {
-      if (countdown) toMenu(); // Abbruch vor dem Start: keine leere Auswertung
-      else if (session.settings.mode !== 'royale') finish(session);
-      else toMenu();
-    } else if (current === 'results' || current === 'help') toMenu();
+    if (current === 'game' && session) requestQuit();
+    else if (current === 'results' || current === 'help') toMenu();
   } else if (e.key === 'Enter' && current === 'results' && lastSettings && document.activeElement === document.body) {
     startGame({ ...lastSettings, seed: randomSeed() });
   }

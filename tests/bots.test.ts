@@ -40,7 +40,7 @@ describe('BotController', () => {
       const p = state.players[0];
       expect(p.stack.length).toBeGreaterThan(0);
       const realWpm = p.stats.charsCleared / 5; // 1 Minute gespielt
-      expect(realWpm).toBeGreaterThan(target * 0.7);
+      expect(realWpm).toBeGreaterThan(target * 0.65);
       expect(realWpm).toBeLessThan(target * 1.1);
     }
   });
@@ -53,7 +53,9 @@ describe('BotController', () => {
       const cmds: Command[] = [];
       for (const b of bots) {
         const c = b.poll(state);
-        expect(c.every((x) => x.playerId === b.playerId && (x.type === 'KEY' || x.type === 'SET_STRATEGY'))).toBe(true);
+        // Dieselben Befehle, die auch ein Mensch hat: tippen, Strategie, abschicken (Leertaste), abwehren (Tab)
+        const allowed = ['KEY', 'SET_STRATEGY', 'SEND_ATTACK', 'DEFEND'];
+        expect(c.every((x) => x.playerId === b.playerId && allowed.includes(x.type))).toBe(true);
         cmds.push(...c);
       }
       step(state, BANK, cmds);

@@ -3,7 +3,8 @@ import type { RngState } from './rng';
 
 export type PlayerId = number;
 
-export type TargetStrategy = 'random' | 'attackers' | 'weakest' | 'badges';
+/** 'manual' = Ziel direkt gewählt (Zifferntasten); Tab wechselt nur zwischen den automatischen. */
+export type TargetStrategy = 'random' | 'attackers' | 'weakest' | 'badges' | 'manual';
 export const TARGET_STRATEGIES: readonly TargetStrategy[] = ['random', 'attackers', 'weakest', 'badges'];
 
 export interface Word {
@@ -21,6 +22,8 @@ export interface IncomingGarbage {
   id: number;
   from: PlayerId;
   amount: number;
+  /** Die verschickten Wörter (aus dem Stapel des Angreifers), Länge = amount. */
+  words?: string[];
   sentTick: number;
   arriveTick: number;
 }
@@ -70,6 +73,8 @@ export interface PlayerState {
   koTick: number;
   koBy: PlayerId | null;
   placement: number;
+  /** Angriffs-Pool: so viele Wörter bereit; Leertaste schickt je eins, sonst automatisch bei autoTick. */
+  pendingAttack: { amount: number; loadTick: number; autoTick: number } | null;
   /** Position in der gemeinsamen Wortfolge (nächstes Wort für diesen Spieler). */
   seqIndex: number;
   /** Privater Zufall für Müllwörter. */
@@ -104,7 +109,13 @@ export interface GameState {
 export type Command =
   | { type: 'KEY'; playerId: PlayerId; key: string }
   | { type: 'SET_STRATEGY'; playerId: PlayerId; strategy: TargetStrategy }
-  | { type: 'CYCLE_STRATEGY'; playerId: PlayerId };
+  | { type: 'CYCLE_STRATEGY'; playerId: PlayerId }
+  /** Ziel direkt wählen (z. B. Zifferntaste); schaltet auf Strategie 'manual'. */
+  | { type: 'SET_TARGET'; playerId: PlayerId; targetId: PlayerId }
+  /** Geladenen Angriff sofort abschicken (Leertaste). */
+  | { type: 'SEND_ATTACK'; playerId: PlayerId }
+  /** Eingehenden Müll gegen Combo-Punkte abwehren (Tab, wenn Müll unterwegs ist). */
+  | { type: 'DEFEND'; playerId: PlayerId };
 
 /* ---------- Events (Ausgaben) ---------- */
 
@@ -115,6 +126,10 @@ export type GameEvent =
   | { type: 'WORD_CLEARED'; playerId: PlayerId; word: Word; combo: number }
   | { type: 'COMBO_BROKEN'; playerId: PlayerId; combo: number }
   | { type: 'ATTACK_TRIGGERED'; playerId: PlayerId; amount: number; combo: number }
+  /** Angriff geladen (bzw. aufgestockt); geht spätestens bei autoTick raus. */
+  | { type: 'ATTACK_LOADED'; playerId: PlayerId; amount: number; total: number; autoTick: number }
+  /** Mit Tab abgewehrt: so viele Wörter, so viele Combo-Punkte bezahlt. */
+  | { type: 'DEFENDED'; playerId: PlayerId; amount: number; comboSpent: number }
   | { type: 'GARBAGE_CANCELLED'; playerId: PlayerId; from: PlayerId; amount: number }
   | { type: 'ATTACK_SENT'; from: PlayerId; to: PlayerId; amount: number; garbageId: number; arriveTick: number }
   | { type: 'GARBAGE_ARRIVED'; playerId: PlayerId; from: PlayerId; amount: number }

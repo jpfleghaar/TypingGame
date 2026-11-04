@@ -5,6 +5,7 @@ export const STRATEGY_LABEL: Record<TargetStrategy, string> = {
   attackers: 'Angreifer',
   weakest: 'Schwache',
   badges: 'K.O.-Jäger',
+  manual: 'Manuell',
 };
 
 export function el<K extends keyof HTMLElementTagNameMap>(

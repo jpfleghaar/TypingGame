@@ -57,6 +57,9 @@ export function strategicTarget(
   switch (me.strategy) {
     case 'random':
       return null;
+    case 'manual':
+      // Direkt gewähltes Ziel bleibt, solange es im Spiel ist; sonst Zufall
+      return opponents.some((o) => o.id === me.targetId) ? me.targetId : null;
     case 'attackers': {
       const memory = msToTicks(state.config.targeting.attackerMemoryMs, state.config);
       const attackers = opponents.filter(

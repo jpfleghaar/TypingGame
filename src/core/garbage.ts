@@ -49,6 +49,7 @@ export function cancelIncoming(incoming: IncomingGarbage[], amount: number): Can
     const pkt = incoming[0];
     const used = Math.min(remaining, pkt.amount);
     pkt.amount -= used;
+    pkt.words?.splice(0, used);
     remaining -= used;
     cancelled.push({ from: pkt.from, amount: used });
     if (pkt.amount === 0) incoming.shift();

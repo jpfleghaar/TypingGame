@@ -33,5 +33,7 @@ export function idle(state: GameState, ticks: number) {
 export const QUIET: GameConfig = {
   ...DEFAULT_CONFIG,
   initialWords: 12,
+  // Angriffe sofort senden: Diese Tests prüfen Müll-Regeln, nicht das Laden per Leertaste
+  attack: { autoSendIntervalMs: 0 },
   spawn: { ...DEFAULT_CONFIG.spawn, startIntervalMs: 1e9, endIntervalMs: 1e9 },
 };

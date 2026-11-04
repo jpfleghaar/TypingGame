@@ -77,7 +77,7 @@ export function renderResults(
       ul.append(li);
     }
     probCard.append(
-      el('p', 'keys', 'Im Verhältnis zu deinem Schnitt langsamer oder fehlerhaft. Sie wurden deiner Übungsliste hinzugefügt.'),
+      el('p', 'keys', 'Diese Wörter fielen dir im Verhältnis zu deinem Schnitt schwerer – langsamer oder mit Fehlern.'),
       ul,
     );
   }
@@ -85,7 +85,7 @@ export function renderResults(
   const act = el('div', 'actions');
   const again = el('button', 'btn primary', info.mode === 'practice' ? 'Nochmal üben' : 'Neue Runde');
   const same = el('button', 'btn', 'Gleicher Seed');
-  const menu = el('button', 'btn', 'Menü');
+  const menu = el('button', 'btn', 'Zurück zum Menü');
   for (const b of [again, same, menu]) b.type = 'button';
   again.addEventListener('click', actions.again);
   same.addEventListener('click', actions.replaySeed);

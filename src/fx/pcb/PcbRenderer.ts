@@ -5,7 +5,7 @@ import { THEMES, type Rgb, type ThemeDef } from '../../theme/themes';
 import type { GameView } from '../../ui/gameView';
 import { pointAt, polyline, type Point, type Polyline } from '../net/geometry';
 import type { ThemeRenderer } from '../ThemeRenderer';
-import { PCB_IMAGE, PCB_LAYOUT, PCB_TRACE_MASKS, type PadDef } from './board';
+import { padIndexForSlot, PCB_IMAGE, PCB_LAYOUT, PCB_MENU_IMAGE, PCB_TRACE_MASKS, type PadDef } from './board';
 
 /**
  * Platinen-Theme mit Hintergrundbild, WebGL (PixiJS) und Bloom.
@@ -105,6 +105,8 @@ export class PcbRenderer implements ThemeRenderer {
   private vignette = new Sprite();
   private dotTex: Texture = Texture.WHITE;
   private maskTex: Texture[] = [];
+  private boardTex: Texture = Texture.EMPTY;
+  private menuTex: Texture = Texture.EMPTY;
 
   // Pools
   private dots: Dot[] = [];
@@ -149,8 +151,20 @@ export class PcbRenderer implements ThemeRenderer {
     });
     this.app = app;
     this.dotTex = this.makeDotTexture();
-    const [board, ...masks] = await Promise.all([PCB_IMAGE, ...PCB_TRACE_MASKS].map((u) => Assets.load<Texture>(u)));
+    const [board, menu, ...masks] = await Promise.all(
+      [PCB_IMAGE, PCB_MENU_IMAGE, ...PCB_TRACE_MASKS].map((u) => Assets.load<Texture>(u)),
+    );
+    menu.source.autoGenerateMipmaps = true;
+    menu.source.updateMipmaps();
+    this.boardTex = board;
+    this.menuTex = menu;
+    // Das Bild kann höher aufgelöst sein als die Spielfläche (z. B. 2×): auf Spielflächen-Größe
+    // setzen, damit es am Bildschirm in voller Schärfe erscheint; Mipmaps für sauberes Verkleinern.
+    board.source.autoGenerateMipmaps = true;
+    board.source.updateMipmaps();
     this.boardSprite.texture = board;
+    this.boardSprite.width = PCB_LAYOUT.width;
+    this.boardSprite.height = PCB_LAYOUT.height;
     this.maskTex = masks;
 
     this.glow.addChild(this.traceGlow, this.frame2, this.dotLayer, this.packetLayer, this.sparkLayer);
@@ -340,6 +354,10 @@ export class PcbRenderer implements ThemeRenderer {
       this.world.scale.set(s);
       this.world.position.set((sw - W * s) / 2, (sh - H * s) / 2);
     }
+    // Im Spiel das Bild mit den Anschlüssen P1–P10, sonst das Menü-Bild
+    this.boardSprite.texture = this.view ? this.boardTex : this.menuTex;
+    this.boardSprite.width = W;
+    this.boardSprite.height = H;
     this.dim.clear().rect(0, 0, W, H).fill({ color: 0x000000, alpha: this.view ? gl.dimGame : gl.dimMenu });
 
     if (onBoard && tf && this.view) {
@@ -347,8 +365,9 @@ export class PcbRenderer implements ThemeRenderer {
       this.stack = { x: (r.x - tf.x) / tf.scale, y: (r.y - tf.y) / tf.scale, width: r.width / tf.scale, height: r.height / tf.scale };
       const order = this.view.opponentOrder();
       order.forEach((playerId, i) => {
-        const pad = PCB_LAYOUT.pads[i];
-        const tex = this.maskTex[i];
+        const padIdx = padIndexForSlot(i);
+        const pad = PCB_LAYOUT.pads[padIdx];
+        const tex = this.maskTex[padIdx];
         if (!pad || !tex) return;
         const path = polyline(pad.path);
         const mk = (layer: Container, blend: 'add' | 'normal') => {
@@ -421,7 +440,7 @@ export class PcbRenderer implements ThemeRenderer {
         const tv = this.traces.get(id);
         if (tv) tv.flashAt = this.time;
       }
-      if (from === this.me) this.view?.flashCard(to, 'good');
+      if (from === this.me) this.view?.hitCard(to, amount);
       return;
     }
     if (from === this.me) {
@@ -429,7 +448,7 @@ export class PcbRenderer implements ThemeRenderer {
       if (!tv) return;
       // mehrere Müllwörter = mehrere Impulse hintereinander
       for (let i = 0; i < Math.min(3, amount); i++) {
-        this.launch(tv, tv.visibleLen, 0, red, size, 1, i * 0.09, i === 0 ? () => this.view?.flashCard(to, 'good') : null);
+        this.launch(tv, tv.visibleLen, 0, red, size, 1, i * 0.09, i === 0 ? () => this.view?.hitCard(to, amount) : null);
       }
     } else if (to === this.me) {
       const tv = this.traces.get(from);

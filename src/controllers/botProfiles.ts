@@ -15,6 +15,10 @@ export interface BotProfile {
   reactionMs: number;
   /** Zusatzpause nach einem Fehler, bis der Fehler "bemerkt" ist (ms). */
   errorPauseMs: number;
+  /** Wahrscheinlichkeit, eingehenden Spam mit Tab abzuwehren (wenn die Combo reicht). */
+  defenseRate: number;
+  /** Zeit bis zum Abschicken eines geladenen Angriffs (Leertaste), ms. */
+  sendDelayMs: number;
   strategy: TargetStrategy;
 }
 
@@ -74,6 +78,9 @@ export function generateBotProfiles(seed: number, opts: BotFieldOptions = DEFAUL
       wordDrift: 0.05 + next(rng) * 0.08,
       reactionMs: 140 + next(rng) * 220 - skill * 60,
       errorPauseMs: 180 + next(rng) * 250,
+      // Bessere Bots wehren öfter ab und schicken schneller
+      defenseRate: Math.min(0.85, 0.2 + skill * 0.55 + (next(rng) - 0.5) * 0.2),
+      sendDelayMs: 1800 - skill * 1300 + next(rng) * 500,
       strategy,
     });
   }

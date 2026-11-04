@@ -27,10 +27,12 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 | Taste | Wirkung |
 |---|---|
 | Buchstaben | Das **unterste** Wort tippen. Groß-/Kleinschreibung zählt. |
-| `Tab` | Ziel-Strategie wechseln: Zufall → Angreifer → Schwache → K.O.-Jäger |
+| `Leertaste` | Ein Wort aus dem Angriffs-Pool sofort abschicken (sonst automatisch eins alle 5 s) |
+| `Tab` | Spam abwehren, wenn welcher kommt und die Combo reicht (3 Combo-Punkte pro Wort) – sonst Ziel-Strategie wechseln: Zufall → Angreifer → Schwache → K.O.-Jäger |
+| `1`–`5`, `6`–`0` | Gegner direkt anvisieren: links von oben 1–5, rechts von oben 6–9 und 0 (Strategie „Manuell“) |
 | `F4` | Ton an/aus |
 | `F2` | Debug-Anzeige (Tick-Rate, eingehender Müll, Bot-Profile) |
-| `Esc` | Runde abbrechen (im Übungsmodus: Runde beenden und auswerten) |
+| `Esc` | Zurück zum Menü, im Spiel mit Nachfrage „Wirklich aufgeben?“ (Spiel pausiert); ohne Gegner gibt es danach die Auswertung |
 
 ## Regeln in Kürze
 
@@ -38,12 +40,12 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 - Dein Stapel fasst 12 Wörter. Regelmäßig kommt oben ein neues Wort dazu, und das Tempo steigt im Lauf der Runde. Ein 13. Wort bedeutet K.O. Tippst du deinen Stapel leer, bekommst du sofort das nächste Wort.
 - Alle Spieler bekommen dieselbe Wortfolge, jeder in seinem eigenen Tempo. Die Müllwörter sind für jeden Spieler zufällig.
 - **Combo:** Jedes fehlerfreie Wort erhöht sie. Ein Tippfehler setzt sie auf 0, das Wort bleibt stehen.
-- **Angriffe:** Bei Combo 3, 6 und 10 schickst du 1, 2 bzw. 3 Müllwörter, danach alle 8 Wörter 2.
-- **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müllwörter werden im Lauf der Runde schwerer: erst normale lange Wörter, später Komposita und Monster-Wörter mit gemischter Groß-/Kleinschreibung. Sie enthalten nur Buchstaben.
-- **Abwehr:** Ein eigener Angriff verrechnet zuerst den Müll, der gerade zu dir unterwegs ist. Nur der Rest geht an dein Ziel.
+- **Angriffe:** Bei Combo 3, 6 und 10 wird ein Angriff mit 1, 2 bzw. 3 Müllwörtern geladen, danach alle 8 Wörter 2. Die Wörter kommen in einen Pool: Jede Leertaste schickt ein Wort daraus, ohne Leertaste geht alle 5 s automatisch eins raus (`attack.autoSendIntervalMs`).
+- **Müll** landet nach 3 s Vorwarnung (Balken links neben dem Stapel) direkt über deinem aktiven Wort. Müll sind die **längsten Wörter aus dem Stapel des Angreifers**: Sie werden verschoben, verlassen also seinen Stapel (das aktive Wort bleibt). Hat er zu wenige, wird mit langen Listenwörtern aufgefüllt. Erst im Finale (2 Spieler übrig) kommt gemischte Groß-/Kleinschreibung dazu.
+- **Abwehr:** Mit `Tab` wehrst du eingehenden Müll ab; jedes Wort kostet 3 Combo-Punkte (`defense.comboCostPerWord`). Außerdem verrechnet ein eigener Angriff zuerst den Müll, der gerade zu dir unterwegs ist. Nur der Rest geht an dein Ziel.
 - **K.O.-Abzeichen:** Wer jemanden K.O. schickt (d. h. in den letzten 10 s Müll bei ihm gelandet hat), bekommt dessen Abzeichen + 1. Ab 2 / 6 / 14 / 30 Abzeichen sind deine Angriffe um 25 / 50 / 75 / 100 % stärker.
 - **Lernmodus:** Unter „Sprache“ gibt es „Deutsch lernen“ und „Englisch lernen“. Du tippst Wörter in der Lernsprache, die Übersetzung steht klein daneben. Wahlweise im Battle Royale oder „In Ruhe“ (ohne Gegner, ohne Müll, langsameres Tempo).
-- **Übungsliste:** Nach jeder Runde werden Wörter gespeichert, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast. Im Menü kannst du sie ansehen und ohne Gegner üben.
+- **Problemwörter:** Die Auswertung zeigt Wörter, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast.
 
 Eine ausführliche Anleitung für Spieler gibt es im Spiel (Button „Anleitung“ im Menü). Die Zahlen darin kommen direkt aus der Config.
 
@@ -55,7 +57,7 @@ Alles wird synthetisch mit der Web Audio API erzeugt, ohne Audiodateien ([`src/a
 
 Alle Werte stehen zentral in [`src/core/config.ts`](src/core/config.ts): Spawn-Tempo und Rampe, Stapelhöhe, Combo-Stufen, Müllmenge, Warnzeit, Abzeichen-Bonus, Zielwahl und Problemwort-Erkennung. Nach Änderungen zeigt `npm run simulate`, wie sich Rundendauer und Platzierungen verschieben.
 
-Stand der Simulation (60 Runden, 11 Spieler, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:15 (alle zwischen 3:40 und 4:40). Spieler unter 30 WPM überleben etwa 1:05, mit 45–59 WPM etwa 2:25, mit 60–75 WPM etwa 2:55.
+Stand der Simulation (60 Runden, 11 Spieler, Bots mit 25–110 WPM): Eine Runde dauert im Schnitt etwa 4:50 (alle zwischen 4:05 und 5:30). Spieler unter 30 WPM überleben etwa 1:10, mit 45–59 WPM etwa 2:35, mit 60–75 WPM etwa 3:10. Bots schicken Wörter aus ihrem Pool einzeln mit profilabhängiger Reaktionszeit ab und wehren mit 20–85 % Wahrscheinlichkeit ab.
 
 Die Spielerzahl steht zentral in `DEFAULT_BOT_FIELD` ([`src/controllers/botProfiles.ts`](src/controllers/botProfiles.ts)).
 
@@ -135,4 +137,6 @@ python3 scripts/extract-board.py <bild.jpg>
 
 Das Skript (benötigt ImageMagick) findet die goldenen Leiterbahn-Bündel im Bild, schreibt je Anschluss eine Leucht-Maske (`src/assets/pcb/trace-pN.png`) und die Mittellinie für die Pakete (`src/fx/pcb/boardLayout.json`). Lage der Anschlüsse und des Chips stehen oben im Skript. Kartenplätze und Arena: [`src/fx/pcb/board.ts`](src/fx/pcb/board.ts). Der Gegner-Avatar liegt in `src/assets/pcb/avatar.png`.
 
-Mit Platine gilt immer diese feste Spielfläche; die Layout-Wahl „Wörter links“ wirkt nur beim klassischen Theme. Ohne WebGL fällt das Spiel auf eine einfache Canvas-Platine ohne Bild zurück.
+Platine ist derzeit das einzige Theme im Menü (Theme- und Layout-Auswahl sind ausgeblendet). Der klassische Stil und das Layout „Wörter links“ sind im Code noch vorhanden, z. B. für spätere Level, und lassen sich in der Entwicklung mit `?theme=classic&layout=split` aufrufen. Ohne WebGL fällt das Spiel auf eine einfache Canvas-Platine ohne Bild zurück.
+
+Menü, Anleitung und Auswertung nutzen ein eigenes Hintergrundbild ohne Anschlüsse (`src/assets/pcb/menu_board.jpeg`, gleiches Seitenverhältnis wie das Spielbild).

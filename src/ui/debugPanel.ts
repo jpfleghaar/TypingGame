@@ -60,7 +60,7 @@ export class DebugPanel {
       }`,
     );
 
-    const short: Record<string, string> = { random: 'Zuf', attackers: 'Angr', weakest: 'Schw', badges: 'Jäg' };
+    const short: Record<string, string> = { random: 'Zuf', attackers: 'Angr', weakest: 'Schw', badges: 'Jäg', manual: 'Man' };
     const rows = this.profiles
       .map((prof, i) => {
         const p = state.players[i + 1];

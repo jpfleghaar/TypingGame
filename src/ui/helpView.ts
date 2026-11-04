@@ -33,7 +33,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       <a href="#h-ziel">Ziel</a><a href="#h-stapel">Dein Stapel</a><a href="#h-combo">Combos</a>
       <a href="#h-muell">Müll</a><a href="#h-abwehr">Abwehr</a><a href="#h-ziele">Ziel-Strategien</a>
       <a href="#h-abzeichen">K.O.-Abzeichen</a><a href="#h-anzeige">Bildschirm</a><a href="#h-modi">Modi & Lernen</a>
-      <a href="#h-uebung">Übungsliste</a><a href="#h-tasten">Tasten</a><a href="#h-tipps">Tipps</a>
+      <a href="#h-tasten">Tasten</a><a href="#h-tipps">Tipps</a>
     </nav>
 
     <section id="h-ziel">
@@ -60,7 +60,7 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
         <div class="demo-stack" aria-hidden="true">
           <div class="demo-row muted">Pelikan</div>
           <div class="demo-row muted">dünsten</div>
-          <div class="demo-row garbage">◆ MondKrater</div>
+          <div class="demo-row garbage">◆ Haltestelle</div>
           <div class="demo-row active"><span class="ok">Aus</span><span class="cur">f</span>lug</div>
           <small>unterstes Wort = aktiv · grün = schon getippt</small>
         </div>
@@ -85,13 +85,17 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       <ul>
         <li><b>Vorwarnung:</b> Der rote Balken links neben deinem Stapel füllt sich ${warnS} Sekunden lang. Daneben steht, wie viele Müllwörter kommen. Kurz vor dem Einschlag pulsiert der Balken.</li>
         <li><b>Einschlag:</b> Der Müll landet direkt <b>über deinem aktiven Wort</b>. Er ist also als Nächstes dran und schiebt deinen Stapel nach oben.</li>
-        <li><b>Schwierigkeit:</b> Am Anfang ist Müll ein normales langes Wort. Mit der Zeit kommen zusammengesetzte Wörter (MondKrater), Riesenwörter (Donaudampfschifffahrt) und vertauschte Groß-/Kleinschreibung (KüHlschrank) dazu.</li>
+        <li><b>Woher der Müll kommt:</b> Ein Angreifer schickt dir seine <b>längsten eigenen Wörter</b>. Sie verschwinden aus seinem Stapel und landen in deinem. Genauso geht es umgekehrt, wenn du angreifst: Deine längsten Wörter wandern zum Gegner. Das Wort, an dem du gerade tippst, bleibt bei dir.</li>
+        <li><b>Finale:</b> Sind nur noch ${cfg.garbage.finaleAtAlive} Spieler übrig, kommt vertauschte Groß-/Kleinschreibung dazu (KüHlschRank).</li>
       </ul>
     </section>
 
     <section id="h-abwehr">
       <h2>Abwehr</h2>
-      <p>Löst du selbst einen Angriff aus, während Müll zu dir unterwegs ist, wird zuerst <b>der eingehende Müll verrechnet</b>.
+      <p><b>Mit Tab:</b> Kommt Spam auf dich zu, erscheint unter dem Posteingang <kbd>Tab</kbd> <b>Abwehren</b>. Jedes abgewehrte Wort kostet
+      ${cfg.defense.comboCostPerWord} Combo-Punkte; ein Druck wehrt so viel ab, wie deine Combo bezahlen kann (älteste Wörter zuerst).
+      Reicht die Combo nicht, wechselt <kbd>Tab</kbd> wie gewohnt die Strategie.</p>
+      <p><b>Mit einem Angriff:</b> Schickst du selbst einen Angriff ab, während Müll zu dir unterwegs ist, wird zuerst <b>der eingehende Müll verrechnet</b>.
       Nur der Rest geht an deinen Gegner.</p>
       <p class="example">Beispiel: 2 Müllwörter kommen auf dich zu. Du erreichst Combo 6 (= 2 Müll). Ergebnis: Der eingehende Müll ist komplett weg, an den Gegner geht nichts.
       Hättest du Combo 10 erreicht (= 3 Müll), ginge 1 Wort an den Gegner.</p>
@@ -100,7 +104,10 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
 
     <section id="h-ziele">
       <h2>Ziel-Strategien</h2>
-      <p>Mit <kbd>Tab</kbd> wechselst du, wen deine Angriffe treffen. Dein aktuelles Ziel siehst du über dem Stapel und am grünen Pfeil zur Gegner-Karte.</p>
+      <p><b>Angriffe sind geladen:</b> Bei einer Combo-Stufe erscheint <kbd>Leertaste</kbd> <b>Senden</b>. Drückst du sie, geht der Angriff sofort raus,
+      sonst alle ${cfg.attack.autoSendIntervalMs / 1000} Sekunden automatisch eins. Weitere Combo-Stufen füllen den Pool auf.
+      Die Wörter, die dabei aus deinem Posteingang verschickt werden, sind <b style="color: var(--send)">bernsteinfarben</b> markiert (wie die Combo-Zahl).</p>
+      <p>Mit <kbd>Tab</kbd> wechselst du die Ziel-Strategie (außer wenn gerade Abwehr möglich ist). Mit den <b>Zifferntasten</b> wählst du einen Gegner direkt: links von oben <kbd>1</kbd>–<kbd>5</kbd>, rechts von oben <kbd>6</kbd>–<kbd>9</kbd> und <kbd>0</kbd>. Die Ziffer steht auch auf jeder Karte. Trifft dein Angriff, wackelt die Karte kurz und du hörst einen Einschlag. Ein direkt gewähltes Ziel bleibt, bis du <kbd>Tab</kbd> drückst oder es ausscheidet. Dein aktuelles Ziel steht unter dem Posteingang.</p>
       <dl class="help-dl">
         <dt>Zufall</dt><dd>Alle paar Sekunden ein neuer zufälliger Gegner.</dd>
         <dt>Angreifer</dt><dd>Wer dich gerade angreift oder anvisiert. Gut, um dich zu wehren.</dd>
@@ -144,21 +151,16 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       </dl>
     </section>
 
-    <section id="h-uebung">
-      <h2>Übungsliste</h2>
-      <p>Nach jeder Runde schaut das Spiel, welche Wörter dir <b>im Verhältnis zu deinem eigenen Schnitt</b> schwerer fielen,
-      weil sie langsamer waren oder Fehler hatten. Diese Wörter landen in deiner Übungsliste im Menü (getrennt nach Sprache).
-      Mit „Üben (ohne Gegner)“ tippst du nur diese Wörter. Einzelne Wörter entfernst du mit ×.</p>
-    </section>
-
     <section id="h-tasten">
       <h2>Tasten</h2>
       <table class="help-table keys-table">
         <tr><th><kbd>Buchstaben</kbd></th><td>unterstes Wort tippen</td></tr>
-        <tr><th><kbd>Tab</kbd></th><td>Ziel-Strategie wechseln</td></tr>
-        <tr><th><kbd>F4</kbd></th><td>Ton an/aus (Lautstärke im Menü)</td></tr>
+        <tr><th><kbd>Leertaste</kbd></th><td>Ein Wort aus dem Angriffs-Pool abschicken (ohne Leertaste automatisch eins alle 5 s)</td></tr>
+        <tr><th><kbd>Tab</kbd></th><td>Spam abwehren (wenn welcher kommt und die Combo reicht), sonst Ziel-Strategie wechseln</td></tr>
+        <tr><th><kbd>1</kbd>–<kbd>0</kbd></th><td>Gegner direkt anvisieren (Ziffer auf der Karte)</td></tr>
+        <tr><th><kbd>F4</kbd></th><td>Ton an/aus (auch per Klick auf „Ton“; Lautstärkeregler oben im Spiel)</td></tr>
         <tr><th><kbd>F2</kbd></th><td>Debug-Anzeige: Tick-Rate, eingehender Müll, Bot-Profile</td></tr>
-        <tr><th><kbd>Esc</kbd></th><td>Runde abbrechen (ohne Gegner: Runde beenden und auswerten)</td></tr>
+        <tr><th><kbd>Esc</kbd></th><td>Zurück zum Menü (auch per Klick auf „Menü“). Im Spiel fragt das Spiel nach und pausiert so lange; ohne Gegner gibt es danach die Auswertung.</td></tr>
       </table>
     </section>
 
@@ -168,7 +170,8 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
         <li><b>Genauigkeit vor Tempo:</b> Ein Fehler kostet die ganze Combo. Lieber etwas langsamer und sauber.</li>
         <li><b>Combo halten, wenn Müll kommt:</b> Ein Angriff kurz vor dem Einschlag wehrt ihn ab.</li>
         <li><b>Schwache</b> bringt Abzeichen, <b>Angreifer</b> schützt dich, <b>K.O.-Jäger</b> bremst die Spitze.</li>
-        <li>Müllwörter in Ruhe lesen: Bei gemischter Schreibung (KüHlschrank) passieren die meisten Fehler.</li>
+        <li>Angreifen entlastet: Jeder Angriff schickt deine längsten Wörter weg.</li>
+        <li>Im Finale Müllwörter in Ruhe lesen: Bei gemischter Schreibung passieren die meisten Fehler.</li>
         <li>Wenn dich Effekte ablenken: Im Menü unter „Sound & Effekte“ kannst du sie reduzieren.</li>
       </ul>
     </section>`;

@@ -39,7 +39,7 @@ export class EffectsBridge {
           if (e.playerId === this.me) this.recent.push({ tick: this.lastTick, chars: e.word.text.length });
           break;
         case 'ATTACK_SENT':
-          if (e.from === this.me) this.attackTrail(e.to, 'out');
+          if (e.from === this.me) this.attackTrail(e.to, 'out', e.amount);
           else if (e.to === this.me) this.attackTrail(e.from, 'in');
           break;
         case 'GARBAGE_ARRIVED':
@@ -87,7 +87,7 @@ export class EffectsBridge {
     return chars / 5 / (windowMs / 60_000);
   }
 
-  private attackTrail(other: PlayerId, dir: 'in' | 'out'): void {
+  private attackTrail(other: PlayerId, dir: 'in' | 'out', amount = 1): void {
     const card = this.view.cardRect(other);
     if (!card) return;
     const board = this.view.boardRect();
@@ -95,7 +95,7 @@ export class EffectsBridge {
     const boardP = edgeToward(board, cardC);
     // Spur fliegt bis ins Innere der Karte (auf Höhe des Stapel-Balkens)
     const cardP = { x: cardC.x + (boardP.x < cardC.x ? -card.width * 0.2 : card.width * 0.2), y: cardC.y };
-    if (dir === 'out') this.fx.trail(boardP, cardP, 'good', () => this.view.flashCard(other, 'good'));
+    if (dir === 'out') this.fx.trail(boardP, cardP, 'good', () => this.view.hitCard(other, amount));
     else this.fx.trail(cardP, boardP, 'danger');
   }
 }

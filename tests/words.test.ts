@@ -4,8 +4,8 @@ import {
   createRng,
   DEFAULT_CONFIG,
   drawWord,
-  garbageDifficulty,
-  makeGarbageWord,
+  drawLongWord,
+  mixCase,
   remember,
   resolveThemeId,
   tierWeights,
@@ -62,18 +62,6 @@ describe('Keine Wiederholung', () => {
     }
   });
 
-  it('auch bei Müllwörtern', () => {
-    const rng = createRng(5);
-    const recent: string[] = [];
-    const seq: string[] = [];
-    for (let i = 0; i < 500; i++) {
-      const w = makeGarbageWord(BANK, rng, DEFAULT_CONFIG, recent);
-      remember(recent, w, 50);
-      seq.push(w);
-    }
-    for (let i = 0; i < seq.length; i++) expect(seq.slice(Math.max(0, i - 49), i)).not.toContain(seq[i]);
-  });
-
   it('im laufenden Spiel bekommt jeder Spieler dieselbe Wortfolge', () => {
     const s = newGame(5, 77);
     idle(s, 60 * 30);
@@ -82,53 +70,26 @@ describe('Keine Wiederholung', () => {
   });
 });
 
-describe('Müllwörter', () => {
-  it('sind lang und schwer', () => {
-    const rng = createRng(1);
-    const words = Array.from({ length: 200 }, () => makeGarbageWord(BANK, rng, DEFAULT_CONFIG, []));
-    const avgLen = words.reduce((s, w) => s + w.length, 0) / words.length;
-    expect(avgLen).toBeGreaterThan(10);
-    expect(words.some((w) => /[äöüÄÖÜß]/.test(w))).toBe(true);
-    expect(words.every((w) => /^[A-Za-zÄÖÜäöüß]+$/.test(w))).toBe(true);
+describe('Schreibung mischen (Finale)', () => {
+  it('tauscht genau die gewünschte Zahl an Buchstaben, nie den ersten', () => {
+    const rng = createRng(4);
+    for (const w of ['Kühlschrank', 'butterfly', 'Schmetterling']) {
+      const m = mixCase(w, rng, 2);
+      expect(m.toLowerCase()).toBe(w.toLowerCase());
+      expect(m[0]).toBe(w[0]);
+      const diff = [...m].filter((c, i) => c !== w[i]).length;
+      expect(diff).toBe(2);
+    }
   });
 
-  it('nutzen pro Spieler eigenen Zufall', () => {
-    const bank = buildWordBank(EN, 'mixed');
-    const a = makeGarbageWord(bank, createRng(1), DEFAULT_CONFIG, []);
-    const b = makeGarbageWord(bank, createRng(2), DEFAULT_CONFIG, []);
-    expect(a).not.toBe(b);
-  });
-});
-
-describe('Müll-Schwierigkeit steigt mit der Rundenzeit', () => {
-  const sample = (difficulty: number) => {
-    const rng = createRng(11);
-    return Array.from({ length: 400 }, () => makeGarbageWord(BANK, rng, DEFAULT_CONFIG, [], difficulty));
-  };
-  const avgLen = (ws: string[]) => ws.reduce((s, w) => s + w.length, 0) / ws.length;
-  const share = (ws: string[], re: RegExp) => ws.filter((w) => re.test(w)).length / ws.length;
-
-  it('enthalten bei keiner Schwierigkeit Zahlen', () => {
-    for (const d of [0, 0.3, 0.7, 1]) expect(share(sample(d), /\d/)).toBe(0);
+  it('lässt ß unverändert (keine Längenänderung)', () => {
+    const m = mixCase('ß', createRng(1), 3);
+    expect(m).toBe('ß');
   });
 
-  it('am Anfang: normale Wörter, kaum Schreibungs-Tricks', () => {
-    const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
-    // kein Großbuchstabe mitten im Wort (Komposita/Case-Flip) bei fast allen
-    expect(share(early, /.[A-ZÄÖÜ]/)).toBeLessThan(0.1);
-  });
-
-  it('am Ende: lang und mit gemischter Schreibung', () => {
-    const early = sample(garbageDifficulty(0, DEFAULT_CONFIG));
-    const late = sample(garbageDifficulty(DEFAULT_CONFIG.garbage.rampMs, DEFAULT_CONFIG));
-    expect(avgLen(late)).toBeGreaterThan(avgLen(early) + 3);
-    expect(share(late, /.[A-ZÄÖÜ]/)).toBeGreaterThan(0.4);
-  });
-
-  it('Schwierigkeit läuft von startDifficulty bis 1 und bleibt dann', () => {
-    const cfg = DEFAULT_CONFIG;
-    expect(garbageDifficulty(0, cfg)).toBeCloseTo(cfg.garbage.startDifficulty);
-    expect(garbageDifficulty(cfg.garbage.rampMs / 2, cfg)).toBeGreaterThan(0.4);
-    expect(garbageDifficulty(cfg.garbage.rampMs * 3, cfg)).toBe(1);
+  it('Auffüll-Wörter sind lang', () => {
+    const rng = createRng(2);
+    const words = Array.from({ length: 50 }, () => drawLongWord(BANK, rng, []));
+    expect(words.reduce((s, w) => s + w.length, 0) / words.length).toBeGreaterThan(8);
   });
 });

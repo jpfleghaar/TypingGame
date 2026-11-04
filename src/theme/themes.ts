@@ -170,7 +170,7 @@ const NET_DEFAULTS: NetValues = {
     glow: { normal: 0, target: 0.7, attacker: 1, hot: 0.18 },
     deadDarkness: 0.82,
     dimGame: 0.12,
-    dimMenu: 0.5,
+    dimMenu: 0.3,
     vignette: 0.5,
   },
 

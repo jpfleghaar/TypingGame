@@ -37,10 +37,22 @@ def run(*args):
     return subprocess.run(args, check=True, capture_output=True).stdout
 
 
-def read_mask(path):
+# Die Spielfläche rechnet immer in dieser Höhe (Breite folgt dem Seitenverhältnis).
+# Größere Bilder (z. B. 2× hochgerechnet) werden nur für die Erkennung verkleinert;
+# als Hintergrund wird das Bild in voller Auflösung übernommen.
+DESIGN_HEIGHT = 768
+
+
+def image_size(path):
+    w, h = run('magick', 'identify', '-format', '%w %h', path).decode().split()
+    return int(w), int(h)
+
+
+def read_mask(path, size=None):
     """Binärmaske der hellen, warmen (goldenen) Pixel als PGM lesen."""
-    pgm = run('magick', path,
-              '-fx', '(0.3*r+0.59*g+0.11*b > 0.42 && r-b > 0.08 && r >= g && g >= b*0.95) ? 1 : 0',
+    resize = ['-resize', f'{size[0]}x{size[1]}!'] if size else []
+    pgm = run('magick', path, *resize,
+              '-fx', '(0.3*r+0.59*g+0.11*b > 0.38 && r-b > 0.08 && r >= g && g >= b*0.95) ? 1 : 0',
               '-colorspace', 'gray', '-depth', '8', 'pgm:-')
     # P5-Header: "P5\n<w> <h>\n255\n"
     parts = pgm.split(b'\n', 3)
@@ -99,7 +111,9 @@ def rdp(points, eps):
 
 def main():
     os.makedirs(ASSETS, exist_ok=True)
-    w, h, data = read_mask(SRC)
+    src_w, src_h = image_size(SRC)
+    design = (round(src_w * DESIGN_HEIGHT / src_h), DESIGN_HEIGHT)
+    w, h, data = read_mask(SRC, design if (src_w, src_h) != design else None)
     bundles = {n: [] for n in range(1, 11)}
     for px in components(w, h, data):
         if len(px) < 60:
@@ -120,7 +134,7 @@ def main():
         pad = 2 * row + (1 if left else 2)  # links ungerade, rechts gerade
         bundles[pad].extend(px)
 
-    layout = {'width': w, 'height': h, 'chip': CHIP, 'pads': []}
+    layout = {'width': w, 'height': h, 'image': {'width': src_w, 'height': src_h}, 'chip': CHIP, 'pads': []}
     for n in range(1, 11):
         px = bundles[n]
         if not px:
@@ -168,7 +182,9 @@ def main():
         })
         print(f'P{n}: {len(px)} px, {len(pts)} Knickpunkte, Maske {mw}×{mh}')
 
-    run('magick', SRC, '-quality', '88', os.path.join(ASSETS, 'board.jpg'))
+    # Hintergrund in voller Auflösung (nicht verkleinert)
+    run('magick', SRC, '-strip', '-quality', '92', os.path.join(ASSETS, 'board.jpg'))
+    print(f'Hintergrund: {src_w}×{src_h}, Spielfläche: {w}×{h}')
     with open(LAYOUT, 'w') as f:
         json.dump(layout, f, indent=1)
     print('geschrieben:', LAYOUT)

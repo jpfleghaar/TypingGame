@@ -293,6 +293,20 @@ export class AudioEngine {
     this.noise(t, 0.015, 0.06, out, 'highpass', 3000); // Klick für mehr Druck
   }
 
+  /**
+   * Treffer: Dein Angriff hat den Gegner erreicht. Kurzer digitaler Einschlag
+   * (tiefer Schlag + heller Klick), bei mehreren Müllwörtern kleine Nachschläge.
+   */
+  attackHit(amount: number): void {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const t = this.ctx.currentTime;
+    this.tone(220, t, 0.16, 'square', 0.09, this.sfx, 1800, 70);
+    this.noise(t, 0.08, 0.12, this.sfx, 'bandpass', 3200, 1.5);
+    for (let i = 1; i < Math.min(3, amount); i++) {
+      this.tone(1046.5 + i * 220, t + i * 0.07, 0.07, 'square', 0.035, this.sfx, 4000);
+    }
+  }
+
   /** Countdown-Piep: kurz für 5…1, höher und länger bei "Los!" (remaining = 0). */
   countdownBeep(remaining: number): void {
     if (!this.ctx || this.ctx.state !== 'running') return;
@@ -331,6 +345,17 @@ export class AudioEngine {
         case 'COMBO_BROKEN':
           if (e.playerId === me) this.setCombo(0);
           if (e.playerId === me && e.combo >= 3) this.tone(330, t, 0.25, 'triangle', 0.05, this.sfx, 1200, 180);
+          break;
+        case 'ATTACK_LOADED':
+          // Aufladen: kurzer steigender Ton (Angriff bereit – Leertaste)
+          if (e.playerId === me) this.tone(440, t, 0.18, 'square', 0.04, this.sfx, 3000, 1320);
+          break;
+        case 'DEFENDED':
+          // Schild: heller Doppelton
+          if (e.playerId === me) {
+            this.tone(880, t, 0.12, 'triangle', 0.08, this.sfx);
+            this.tone(1320, t + 0.06, 0.18, 'triangle', 0.07, this.sfx);
+          }
           break;
         case 'ATTACK_SENT':
           if (e.from === me) {

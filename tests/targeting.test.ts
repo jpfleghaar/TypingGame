@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeTarget, createGame, type GameState, type PlayerId } from '../src/core';
+import { computeTarget, createGame, step, type GameState, type PlayerId } from '../src/core';
 import { BANK, newGame, QUIET } from './helpers';
 
 function snapshot(s: GameState): Map<PlayerId, PlayerId | null> {
@@ -111,5 +111,38 @@ describe('Fairness der Zielwahl', () => {
     }
     // fair wären ~1/18 ≈ 5,6 %
     expect(onZero / total).toBeLessThan(0.12);
+  });
+});
+
+describe('Ziel direkt wählen (Zifferntasten)', () => {
+  it('SET_TARGET setzt das Ziel dauerhaft (Strategie "Manuell")', () => {
+    const s = newGame(5, 3, QUIET);
+    step(s, BANK, [{ type: 'SET_TARGET', playerId: 0, targetId: 3 }]);
+    expect(s.players[0].strategy).toBe('manual');
+    expect(s.players[0].targetId).toBe(3);
+    for (let i = 0; i < 600; i++) step(s, BANK, []);
+    expect(s.players[0].targetId).toBe(3);
+  });
+
+  it('ist das Ziel K.O., wird automatisch ein anderes gewählt', () => {
+    const s = newGame(5, 3, QUIET);
+    step(s, BANK, [{ type: 'SET_TARGET', playerId: 0, targetId: 3 }]);
+    s.players[3].alive = false;
+    step(s, BANK, []);
+    expect(s.players[0].targetId).not.toBe(3);
+    expect(s.players[0].targetId).not.toBeNull();
+  });
+
+  it('ungültige Ziele (sich selbst, K.O.) werden ignoriert; Tab führt zurück zu den Strategien', () => {
+    const s = newGame(5, 3, QUIET);
+    s.players[2].alive = false;
+    const before = s.players[0].targetId;
+    step(s, BANK, [{ type: 'SET_TARGET', playerId: 0, targetId: 0 }]);
+    step(s, BANK, [{ type: 'SET_TARGET', playerId: 0, targetId: 2 }]);
+    expect(s.players[0].strategy).toBe('random');
+    expect(s.players[0].targetId).toBe(before);
+    step(s, BANK, [{ type: 'SET_TARGET', playerId: 0, targetId: 4 }]);
+    step(s, BANK, [{ type: 'CYCLE_STRATEGY', playerId: 0 }]);
+    expect(s.players[0].strategy).toBe('random');
   });
 });

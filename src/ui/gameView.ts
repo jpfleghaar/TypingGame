@@ -1,6 +1,6 @@
-import { msToTicks, pendingGarbage, ticksToMs, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
+import { msToTicks, pendingGarbage, selectWordsToSend, ticksToMs, wordsLeavingWithAttack, wpm, type GameEvent, type GameState, type PlayerState, type Word } from '../core';
 import type { FrameInfo } from '../runtime/GameRunner';
-import { el, formatTime, STRATEGY_LABEL } from './labels';
+import { el, formatTime } from './labels';
 import { motionReduced } from './motion';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -53,6 +53,12 @@ export interface ViewOptions {
   texts?: { sep: string; modeLabel: string; targetLabel: string; tabLabel: string; brackets: boolean };
   /** Lautstärkeregler in der Hinweiszeile. */
   volume?: { value: number; onInput: (v: number) => void };
+  /** Klick auf "Ton" schaltet stumm/an. */
+  onToggleMute?: () => void;
+  /** Eigener Angriff hat einen Gegner erreicht (für den Treffer-Sound). */
+  onCardHit?: (id: number, amount: number) => void;
+  /** Klick auf "Menü" im Spiel. */
+  onMenu?: () => void;
 }
 
 interface OppCard {
@@ -78,7 +84,6 @@ export class GameView {
     alive: el('b'),
     time: el('b'),
   };
-  private strategyEl = el('strong');
   private targetEl = el('strong');
   private badgesEl = el('strong');
   private rows = new Map<number, HTMLElement>();
@@ -95,6 +100,13 @@ export class GameView {
   private lastAttackFrom = new Map<number, number>();
   private attackers = new Set<number>();
   private resizeObs: ResizeObserver | null = null;
+  /** Aufforderungen unter dem Posteingang: Angriff senden (Leertaste) / abwehren (Tab). */
+  private prompts = el('div', 'prompts');
+  private sendChip = el('div', 'prompt send');
+  private sendText = el('span');
+  private sendBar = el('i');
+  private defendChip = el('div', 'prompt defend');
+  private defendText = el('span');
   private stage: HTMLElement | null = null;
   private stageTf: StageTransform = { scale: 1, x: 0, y: 0 };
   private onWindowResize = () => this.fitStage();
@@ -116,8 +128,11 @@ export class GameView {
     const left = el('aside', 'opponents left');
     const right = el('aside', split ? 'opponents grid2' : 'opponents right');
     const others = state.players.filter((p) => p.id !== humanId);
+    const tx = options.texts ?? { sep: '·', modeLabel: 'Thema', targetLabel: 'Ziel', tabLabel: 'Strategie', brackets: false };
     others.forEach((p, i) => {
       const card = this.makeOpp(p, options.nodeLabels?.[i % options.nodeLabels.length], spec?.avatar, i);
+      // Zifferntaste zum direkten Anvisieren: 1–9, 0 = zehnter Platz
+      if (i < 10) card.root.querySelector('.name')?.prepend(el('span', 'key-tag', tx.brackets ? `[${(i + 1) % 10}]` : String((i + 1) % 10)));
       this.opps.set(p.id, card);
       const slot = spec?.slots[i];
       if (slot) place(card.root, slot);
@@ -141,8 +156,7 @@ export class GameView {
 
     const targetLine = el('div', 'target-line');
     const t = el('span');
-    const tx = options.texts ?? { sep: '·', modeLabel: 'Thema', targetLabel: 'Ziel', tabLabel: 'Strategie', brackets: false };
-    t.append(`${tx.targetLabel}: `, this.targetEl, ` ${tx.sep} `, this.strategyEl);
+    t.append(`${tx.targetLabel}: `, this.targetEl);
     const b = el('span');
     b.append('Abzeichen: ', this.badgesEl);
     targetLine.append(t, b);
@@ -160,7 +174,30 @@ export class GameView {
     const hint = el('div', 'hint');
     const key = (k: string) => el('kbd', undefined, tx.brackets ? `[${k.toUpperCase()}]` : k);
     const sep = () => ` ${tx.sep} `;
-    hint.append(`${tx.modeLabel}: ${themeLabel}`, sep(), key('Tab'), ` ${tx.tabLabel}`, sep(), key('F4'), ' Ton', sep(), key('Esc'), ' Abbrechen', sep());
+    // "Ton" ist anklickbar (schaltet stumm/an), gleiche Wirkung wie F4
+    const tone = el('button', 'tone-toggle');
+    tone.type = 'button';
+    tone.tabIndex = -1;
+    tone.title = 'Ton an/aus';
+    tone.append(key('F4'), ' Ton');
+    tone.addEventListener('click', () => {
+      options.onToggleMute?.();
+      tone.blur();
+    });
+    hint.append(`${tx.modeLabel}: ${themeLabel}`, sep(), key('Tab'), ` ${tx.tabLabel}`, sep());
+    if (others.length > 0) hint.append(key('Space'), ' Senden', sep());
+    if (others.length > 0) hint.append(key(others.length >= 10 ? '1–0' : `1–${others.length}`), ' Direkt', sep());
+    // "Menü" anklickbar (fragt im Spiel nach, ob man aufgeben will) – wie Esc
+    const menuBtn = el('button', 'tone-toggle menu-btn');
+    menuBtn.type = 'button';
+    menuBtn.tabIndex = -1;
+    menuBtn.title = 'Zurück zum Menü';
+    menuBtn.append(key('Esc'), ' Menü');
+    menuBtn.addEventListener('click', () => {
+      menuBtn.blur();
+      options.onMenu?.();
+    });
+    hint.append(tone, sep(), menuBtn, sep());
     if (options.volume) {
       // Lautstärkeregler; gibt den Fokus sofort zurück, damit Tippen weiter funktioniert
       const vol = el('input', 'vol');
@@ -179,10 +216,10 @@ export class GameView {
     hint.append(this.audioEl);
     if (spec) {
       // Feste Spielfläche: Posteingang oben, Ziel und Werte direkt darunter, Hinweise als Kopfzeile
-      arena.append(board, targetLine, hud);
+      arena.append(board, this.makePrompts(tx.brackets), targetLine, hud);
       hint.classList.add('board-header');
       place(hint, spec.header);
-    } else arena.append(hud, targetLine, board, hint);
+    } else arena.append(hud, targetLine, board, this.makePrompts(tx.brackets), hint);
     if (spec) {
       // Feste Spielfläche: alles absolut in Spielflächen-Koordinaten, dann skaliert
       const stage = el('div', 'board-stage');
@@ -403,6 +440,22 @@ export class GameView {
     if (card) restartClass(card.root, kind === 'good' ? 'hit-good' : 'hit');
   }
 
+  /**
+   * Dein Angriff erreicht einen Gegner: Karte wackelt kurz und leuchtet auf,
+   * "+N SPAM" schwebt hoch, dazu der Treffer-Sound (über onCardHit).
+   */
+  hitCard(id: number, amount: number): void {
+    const card = this.opps.get(id);
+    if (!card) return;
+    this.options.onCardHit?.(id, amount);
+    restartClass(card.root, 'got-hit');
+    if (motionReduced()) return;
+    const label = el('span', 'hit-label', `+${amount} ${this.options.texts?.brackets ? 'SPAM' : 'Müll'}`);
+    card.root.append(label);
+    label.addEventListener('animationend', () => label.remove(), { once: true });
+    setTimeout(() => label.remove(), 1500);
+  }
+
   flashBoard(): void {
     restartClass(this.warnEl, 'hit');
   }
@@ -466,6 +519,9 @@ export class GameView {
       this.activeCursor = me.cursor;
     }
     this.stackEl.classList.toggle('danger', me.stack.length >= state.config.stackMax - 2);
+    // Grün: Wörter, die der geladene Angriff gerade mitnehmen würde
+    const sending = me.alive ? new Set(selectWordsToSend(me, wordsLeavingWithAttack(me)).map((w) => w.id)) : new Set<number>();
+    for (const [id, row] of this.rows) row.classList.toggle('to-send', sending.has(id));
   }
 
   private makeRow(w: Word): HTMLElement {
@@ -491,14 +547,48 @@ export class GameView {
     this.activeCursor = -1;
   }
 
+  private makePrompts(brackets: boolean): HTMLElement {
+    const k = (t: string) => el('kbd', undefined, brackets ? `[${t.toUpperCase()}]` : t);
+    const bar = el('span', 'prompt-bar');
+    bar.append(this.sendBar);
+    this.sendChip.append(k('Space'), this.sendText, bar);
+    this.defendChip.append(k('Tab'), this.defendText);
+    this.sendChip.hidden = true;
+    this.defendChip.hidden = true;
+    this.prompts.append(this.sendChip, this.defendChip);
+    return this.prompts;
+  }
+
+  /** Aufforderungen aktualisieren: geladener Angriff, mögliche Abwehr. */
+  private renderPrompts(state: GameState, me: PlayerState): void {
+    const pa = me.alive ? me.pendingAttack : null;
+    this.sendChip.hidden = !pa;
+    if (pa) {
+      // Pool-Größe; Balken läuft bis zum nächsten automatisch gesendeten Wort
+      this.sendText.textContent = ` Senden · ${pa.amount} bereit`;
+      const total = Math.max(1, msToTicks(state.config.attack.autoSendIntervalMs, state.config));
+      const left = Math.max(0, pa.autoTick - state.tick);
+      this.sendBar.style.width = `${(left / total) * 100}%`;
+    }
+    const incoming = me.alive ? pendingGarbage(me.incoming) : 0;
+    const cost = state.config.defense.comboCostPerWord;
+    this.defendChip.hidden = incoming === 0;
+    if (incoming > 0) {
+      const can = Math.min(incoming, Math.floor(me.combo / cost));
+      this.defendChip.classList.toggle('ready', can > 0);
+      this.defendText.textContent =
+        can > 0 ? ` Abwehren ${can}× (−${can * cost} Combo)` : ` Abwehr ab ${cost} Combo`;
+    }
+  }
+
   private renderHud(state: GameState, me: PlayerState): void {
+    this.renderPrompts(state, me);
     this.hud.combo.textContent = String(me.combo);
     this.hud.wpm.textContent = wpm(state, me).toFixed(0);
     if (state.players.length > 1) {
       this.hud.alive.textContent = `${state.players.filter((p) => p.alive).length}/${state.players.length}`;
     }
     this.hud.time.textContent = formatTime(ticksToMs(state.tick, state.config));
-    this.strategyEl.textContent = STRATEGY_LABEL[me.strategy];
     this.targetEl.textContent = me.targetId !== null ? state.players[me.targetId].name : '–';
     this.badgesEl.textContent = String(me.badges);
   }
@@ -528,6 +618,8 @@ export class GameView {
       card.root.classList.toggle('critical', fill >= 0.85);
       card.root.classList.toggle('targeted', p.alive && me.targetId === id);
       card.root.classList.toggle('attacker', this.attackers.has(id));
+      // Rot, solange dieser Spieler von irgendwem angegriffen wird (Müll unterwegs)
+      card.root.classList.toggle('under-attack', p.alive && p.incoming.length > 0);
       if (!p.alive && !card.root.classList.contains('ko')) {
         card.root.classList.add('ko');
         card.badges.textContent = `#${p.placement}`;

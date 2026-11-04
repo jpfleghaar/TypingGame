@@ -61,6 +61,16 @@ export class GameRunner {
     this.raf = requestAnimationFrame(this.frame);
   }
 
+  /** Anhalten ohne Abmelden der Controller; weiter mit start() (verwirft Eingaben aus der Pause). */
+  pause(): void {
+    this.running = false;
+    cancelAnimationFrame(this.raf);
+  }
+
+  get isRunning(): boolean {
+    return this.running;
+  }
+
   stop(): void {
     this.running = false;
     cancelAnimationFrame(this.raf);

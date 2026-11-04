@@ -1,5 +1,6 @@
 import avatarUrl from '../../assets/pcb/avatar.png';
 import boardUrl from '../../assets/pcb/board.jpg';
+import menuUrl from '../../assets/pcb/menu_board.jpeg';
 import type { BoardSpec } from '../../ui/gameView';
 import layoutJson from './boardLayout.json';
 
@@ -26,20 +27,38 @@ export interface PadDef {
 }
 
 export interface BoardLayout {
+  /** Spielfläche (Koordinatensystem für Karten, Masken, Pfade). */
   width: number;
   height: number;
+  /** Tatsächliche Pixelgröße des Hintergrundbilds (darf größer sein, z. B. 2×). */
+  image?: { width: number; height: number };
   chip: { x: number; y: number; width: number; height: number };
   pads: PadDef[];
 }
 
 export const PCB_LAYOUT = layoutJson as BoardLayout;
 export const PCB_IMAGE = boardUrl;
+/** Hintergrund für Menü, Anleitung und Auswertung (gleiches Seitenverhältnis, ohne Anschlüsse). */
+export const PCB_MENU_IMAGE = menuUrl;
 export const PCB_AVATAR = avatarUrl;
 
 /** URLs der Leucht-Masken in Pad-Reihenfolge (P1 … P10). */
 export const PCB_TRACE_MASKS: string[] = PCB_LAYOUT.pads.map(
   (p) => new URL(`../../assets/pcb/trace-${p.id.toLowerCase()}.png`, import.meta.url).href,
 );
+
+/**
+ * Gegner-Platz i → Anschluss im Bild. Plätze 0–4 = linke Spalte von oben
+ * (P1, P3, P5, P7, P9), Plätze 5–9 = rechte Spalte von oben (P2 … P10).
+ * So passen die Zifferntasten: links 1–5, rechts 6–9 und 0.
+ */
+export function padIndexForSlot(slot: number): number {
+  const lefts = PCB_LAYOUT.pads.map((p, i) => ({ p, i })).filter((x) => x.p.side === 'left');
+  const rights = PCB_LAYOUT.pads.map((p, i) => ({ p, i })).filter((x) => x.p.side === 'right');
+  const byY = (a: { p: PadDef }, b: { p: PadDef }) => a.p.pad.y - b.p.pad.y;
+  const order = [...lefts.sort(byY), ...rights.sort(byY)].map((x) => x.i);
+  return order[slot] ?? -1;
+}
 
 /** Kartengröße und Abstände auf der Spielfläche (Bild-Pixel). */
 const CARD = { width: 240, height: 64, margin: 14, gapToPad: 6 };
@@ -54,7 +73,7 @@ const HEADER = { y: 6, height: 26 };
 /** Spielfläche für die Spielansicht: je Pad ein Kartenplatz, Arena über dem Chip. */
 export function pcbBoardSpec(): BoardSpec {
   const { width, height } = PCB_LAYOUT;
-  const slots = PCB_LAYOUT.pads.map((p) => ({
+  const slots = PCB_LAYOUT.pads.map((_, slot) => PCB_LAYOUT.pads[padIndexForSlot(slot)]).map((p) => ({
     x: p.side === 'left' ? Math.max(CARD.margin, p.pad.x - CARD.gapToPad - CARD.width) : p.pad.x + CARD.gapToPad,
     y: p.pad.y - CARD.height / 2,
     width: CARD.width,
