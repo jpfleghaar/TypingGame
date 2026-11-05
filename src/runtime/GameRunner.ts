@@ -9,6 +9,20 @@ export interface TickRecord {
 type EventListener = (events: GameEvent[], state: GameState) => void;
 type FrameListener = (state: GameState, info: FrameInfo) => void;
 
+/**
+ * Netzwerk-Takt: Im Mehrspieler bestimmt der Server, bis zu welchem Tick
+ * gerechnet werden darf (nur dafür liegen alle Befehle vor).
+ */
+export interface TickGate {
+  /** Ticks < available() dürfen gerechnet werden. */
+  available(): number;
+  /** Nach jedem Tick (z. B. Prüfsumme vergleichen). */
+  afterTick?(state: GameState): void;
+}
+
+/** So viele Ticks rechnet der Browser höchstens pro Bild nach (z. B. nach einem Tab-Wechsel). */
+const MAX_CATCH_UP_PER_FRAME = 3000;
+
 export interface FrameInfo {
   /** Gemessene Ticks pro Sekunde (für den Debug-Modus). */
   tps: number;
@@ -38,6 +52,7 @@ export class GameRunner {
     readonly state: GameState,
     readonly bank: WordBank,
     readonly controllers: Controller[],
+    private readonly gate?: TickGate,
   ) {}
 
   get tickMs(): number {
@@ -83,13 +98,23 @@ export class GameRunner {
     if (commands.length > 0) this.log.push({ tick: this.state.tick, commands });
     const events = step(this.state, this.bank, commands);
     if (events.length > 0) for (const cb of this.eventListeners) cb(events, this.state);
+    this.gate?.afterTick?.(this.state);
     return events;
   }
 
   private frame = (now: number): void => {
     if (!this.running) return;
+    if (this.gate) {
+      // Mehrspieler: alles rechnen, was der Server freigegeben hat – kein eigener Takt.
+      const until = Math.min(this.gate.available(), this.state.tick + MAX_CATCH_UP_PER_FRAME);
+      while (this.state.tick < until && !this.state.finished) {
+        this.tickOnce();
+        this.tpsWindow.push(now);
+      }
+      this.acc = 0;
+    }
     // Nach Tab-Wechsel o. ä. nicht hunderte Ticks nachholen: Spiel pausiert effektiv.
-    this.acc += Math.min(now - this.last, 250);
+    if (!this.gate) this.acc += Math.min(now - this.last, 250);
     this.last = now;
     while (this.acc >= this.tickMs && !this.state.finished) {
       this.tickOnce();

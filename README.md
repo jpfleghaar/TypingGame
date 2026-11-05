@@ -1,6 +1,6 @@
 # Typing Royale
 
-Ein Tipp-Battle-Royale im Browser für 11 Teilnehmer (du + 10 Bots). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst fehlerfrei, sammelst Punkte und gibst sie für Angriffe (Müllwörter an deine Gegner) oder Abwehr aus. Wer überläuft, ist raus.
+Ein Tipp-Battle-Royale im Browser für 11 Teilnehmer: allein gegen 10 Bots oder mit Freunden im Mehrspieler-Raum (freie Plätze füllen Bots auf). Die Angriffs-Mechanik ist von Tetris 99 inspiriert: Du tippst fehlerfrei, sammelst Punkte und gibst sie für Angriffe (Müllwörter an deine Gegner) oder Abwehr aus. Wer überläuft, ist raus.
 
 ## Starten
 
@@ -15,12 +15,14 @@ Weitere Befehle:
 
 | Befehl | Zweck |
 |---|---|
+| `npm run server` | Mehrspieler-Server auf Port 8787 (siehe [Mehrspieler](#mehrspieler)) |
+| `npm run lan` | Spiel bauen und mit dem Mehrspieler-Server ausliefern – eine Adresse für alle |
 | `npm test` | Unit-Tests (Vitest) |
 | `npm run build` | Typecheck + Produktions-Build nach `dist/` |
 | `npm run simulate -- 60` | Balancing-Simulation: 60 Runden nur mit Bots, zeigt Rundendauer und Platzierung nach WPM |
 | `npm run words` | Wortlisten und Lern-Vokabeln aus `wordlists/` neu nach `src/data/words/*.json` bauen |
 
-URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?autostart=1234` mit festem Seed), `&debug` blendet die Debug-Anzeige direkt ein, `&learn=en` bzw. `&learn=de` startet im Lernmodus, `?help` öffnet die Anleitung.
+URL-Parameter: `?raum=ABCD` tritt direkt dem Mehrspieler-Raum ABCD bei (Einladungslink). Für die Entwicklung: `?autostart` startet sofort eine Runde (`?autostart=1234` mit festem Seed), `&debug` blendet die Debug-Anzeige direkt ein, `&learn=en` bzw. `&learn=de` startet im Lernmodus, `&mode=endless` im Endlos-Modus, `?help` öffnet die Anleitung.
 
 ## Steuerung
 
@@ -47,10 +49,31 @@ URL-Parameter für die Entwicklung: `?autostart` startet sofort eine Runde (`?au
 - **Abwehr (`Tab`):** Wehrt eingehenden Müll ab, 1 Punkt pro Wort (`defense.pointsPerWord`), älteste Wörter zuerst. Beim K.O. ist der Spieler raus, seine Punkte spielen dann keine Rolle mehr.
 - **Auswertung:** Am Ende stehen Max. Combo, verdiente Punkte, für Angriff bzw. Abwehr ausgegebene und verfallene Punkte.
 - **K.O.-Abzeichen:** Wer jemanden K.O. schickt (d. h. in den letzten 10 s Müll bei ihm gelandet hat), bekommt dessen Abzeichen + 1. Ab 2 / 6 / 14 / 30 Abzeichen sind deine Angriffe um 25 / 50 / 75 / 100 % stärker.
-- **Lernmodus:** Unter „Sprache“ gibt es „Deutsch lernen“ und „Englisch lernen“. Du tippst Wörter in der Lernsprache, die Übersetzung steht klein daneben. Wahlweise im Battle Royale oder „In Ruhe“ (ohne Gegner, ohne Müll, langsameres Tempo).
+- **Endlos-Modus:** Allein, ohne Gegner. Die Wörter kommen immer schneller (nach 2 Minuten jede Minute 15 % schneller, ohne Obergrenze). Gezählt wird, wie lange du durchhältst. Die Bestzeit wird pro Sprache im Browser gespeichert und im Spiel als Kachel „Rekord“ angezeigt. Simuliert hält man mit 30 WPM etwa 1:50 durch, mit 70 WPM etwa 3:30 und mit 110 WPM etwa 5:30.
+- **Lernmodus:** Unter „Sprache“ gibt es „Deutsch lernen“ und „Englisch lernen“. Du tippst Wörter in der Lernsprache, die Übersetzung steht klein daneben. Das geht im Battle Royale, im Endlos-Modus oder „In Ruhe“ (ohne Gegner, ohne Müll, langsameres Tempo).
 - **Problemwörter:** Die Auswertung zeigt Wörter, die du im Verhältnis zu deinem Schnitt langsam oder fehlerhaft getippt hast.
 
 Eine ausführliche Anleitung für Spieler gibt es im Spiel (Button „Anleitung“ im Menü). Die Zahlen darin kommen direkt aus der Config.
+
+## Mehrspieler
+
+Im eigenen WLAN geht es am einfachsten so:
+
+```bash
+npm run lan
+```
+
+Das baut das Spiel und startet den Server. Er zeigt die Adressen an, z. B. `http://192.168.178.20:8787`. Diese Adresse öffnen alle im Browser. Dann:
+
+1. Eine Person klickt im Menü unter **Mehrspieler** auf **Raum erstellen** und bekommt einen 4-stelligen Code und einen Einladungslink.
+2. Die anderen geben den Code ein und klicken **Beitreten** – oder öffnen einfach den Einladungslink.
+3. Der Gastgeber stellt Sprache, Thema und Zahl der Bots ein und startet die Runde. Bots füllen bis höchstens 11 Spieler auf.
+
+Während der Entwicklung laufen `npm run dev -- --host` und `npm run server` nebeneinander; Vite leitet `/ws` an den Server weiter. Ist der Port gesperrt, muss die Firewall Port 8787 (bzw. 5173) im lokalen Netz erlauben.
+
+Bricht die Verbindung ab oder lädt jemand die Seite neu, bleibt sein Platz 60 Sekunden reserviert. Der Browser verbindet sich automatisch neu und steigt wieder in die laufende Runde ein. Hat jemand noch eine veraltete Seite offen, wird er beim Beitreten gebeten, sie neu zu laden.
+
+Unterschiede zum Einzelspiel: Die Runde lässt sich nicht pausieren. Nach dem eigenen K.O. kannst du zuschauen. Die Auswertung kommt, sobald die Runde für alle vorbei ist.
 
 ## Sound
 
@@ -91,7 +114,7 @@ tests/              Vitest
 ### Datenfluss
 
 ```
-Controller (Tastatur / Bot / später Netzwerk)
+Controller (Tastatur / Bot / Netzwerk)
         │  poll(state) → Command[]       z. B. { type: 'KEY', playerId, key }
         ▼
 GameRunner  ── feste 60 Ticks/s ──►  step(state, bank, commands)  ──►  GameEvent[]
@@ -109,17 +132,20 @@ Grundsätze:
 4. **Darstellung nur über Events.** UI, Effekte und Sound lesen den State und reagieren auf Events. Sie verändern nie etwas am Spiel.
 5. **Die Textzone bleibt frei.** Partikel und Combo-Rand liegen auf einem Canvas hinter dem DOM. Lichtspuren liegen auf einem Canvas davor, auf dem der eigene Stapel per Clipping ausgeschnitten ist. Bei `prefers-reduced-motion` oder mit „Effekte reduzieren“ im Menü sind alle bewegten Effekte aus.
 
-### Wo der Online-Multiplayer andockt
+### Mehrspieler (Lockstep)
 
-Die Architektur ist auf ein **Lockstep-Modell** ausgelegt: Alle Clients rechnen dieselbe Simulation, verschickt werden nur Eingaben.
+Alle Teilnehmer rechnen dieselbe Simulation, verschickt werden nur Eingaben:
 
-1. **Server (neu):** Er würfelt den Seed und die Startaufstellung und schickt beides an alle. Danach sammelt er pro Tick die Commands aller Spieler und verteilt sie als Paket `{ tick, commands[] }`. Das Format existiert bereits als `TickRecord` in `GameRunner.log`.
-2. **`NetworkController` (neu, `src/controllers/`):** Er implementiert `Controller` und gibt in `poll()` die Commands eines entfernten Spielers zurück, die der Server für diesen Tick geliefert hat.
-3. **Lokaler Spieler:** Der `LocalController` schickt seine Tastendrücke zusätzlich an den Server. Ausgeführt werden sie erst, wenn sie im Server-Paket für den Tick zurückkommen. Das gibt allen Clients dieselbe Reihenfolge.
-4. **`GameRunner`:** Er darf einen Tick erst rechnen, wenn das Server-Paket dafür da ist. Gegen spürbare Verzögerung beim Tippen hilft eine lokale Vorschau: die eigene Eingabe sofort anzeigen und bestätigen, sobald der Tick eintrifft.
-5. **Bots** können weiter auf dem Server oder deterministisch auf allen Clients laufen. Sie sind ohnehin nur Controller mit eigenem Seed.
+1. **Server** ([`server/`](server/)): Er würfelt beim Start den Seed und schickt allen die Aufstellung (`MatchSetup`: Einstellungen, Seed, Namen). Menschen bekommen die IDs 0…n-1, danach folgen die Bots. Der Server rechnet die Runde in Echtzeit selbst mit und steuert die **Bots**. Eingehende Tastendrücke ordnet er dem nächsten Tick zu und verteilt pro Tick die Befehle **aller** Spieler (`{ upTo, cmds: [tick, Command[]][] }`).
+2. **Browser:** Der `GameRunner` bekommt einen `NetFeed` als einzigen Controller und Taktgeber. Er rechnet nur Ticks, für die der Server die Befehle freigegeben hat. Der eigene `LocalController` liefert nicht direkt ins Spiel, sondern schickt die Tasten an den Server. Sie wirken, wenn sie im Tick-Paket zurückkommen. So haben alle dieselbe Reihenfolge.
+3. **Absicherung:** Alle 2 Sekunden schickt der Server eine Prüfsumme des Spielstands mit. Weicht ein Browser ab, hält er an und übernimmt den kompletten Spielstand vom Server (der State ist reines JSON).
+4. **Version:** `__GAME_VERSION__` ist eine Prüfsumme über Regeln, Bots, Wortlisten und Netzwerkcode. Sie wird in `vite.config.ts` berechnet und gilt für Build und Server gleichermaßen. Browser mit anderer Version werden abgewiesen (`outdated`).
+5. **Wieder-Einstieg:** Jeder Platz hat einen geheimen Schlüssel (sessionStorage). Mit `rejoin` bekommt man denselben Platz zurück, mitten in der Runde inklusive des aktuellen Spielstands.
+6. **Vorab-Anzeige:** Eigene Buchstaben erscheinen sofort im aktiven Wort (`NetFeed.pendingKeys`), bevor der Server sie bestätigt. Gerechnet wird trotzdem nur mit bestätigten Eingaben.
+7. **Sicherheit:** Der Server nimmt nur gültige Befehle an und setzt immer die Spieler-ID des Absenders ein (`sanitizeCommand`). Niemand kann für andere tippen.
+8. **Rundenende:** Sind alle Menschen raus, rechnet der Server die Runde sofort zu Ende. Danach ist der Raum wieder offen für die nächste Runde.
 
-`src/core/` muss dafür nicht geändert werden. Zur Absicherung können Clients regelmäßig einen Hash von `JSON.stringify(state)` vergleichen.
+`src/core/` musste dafür nicht geändert werden. Die Lobby-Logik in [`server/rooms.ts`](server/rooms.ts) ist unabhängig vom Netzwerk und wird in `tests/multiplayer.test.ts` getestet.
 
 ## Wortlisten erweitern
 

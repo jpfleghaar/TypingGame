@@ -10,9 +10,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "words": "node scripts/build-words.mjs",
-    "simulate": "vite-node scripts/simulate.ts"
+    "simulate": "vite-node scripts/simulate.ts",
+    "server": "vite-node server/index.ts",
+    "lan": "npm run build && npm run server"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.2",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
@@ -23,6 +26,7 @@
     "@fontsource/orbitron": "^5.3.0",
     "@fontsource/share-tech-mono": "^5.3.0",
     "pixi-filters": "^6.1.5",
-    "pixi.js": "^8.22.0"
+    "pixi.js": "^8.22.0",
+    "ws": "^8.22.1"
   }
 }

@@ -154,10 +154,15 @@ export function renderHelp(root: HTMLElement, onBack: () => void): void {
       <h2>Modi & Lernen</h2>
       <dl class="help-dl">
         <dt>Deutsch / English</dt><dd>Normales Battle Royale mit deutschen bzw. englischen Wörtern.</dd>
+        <dt>Endlos</dt><dd>Allein und ohne Gegner: Die Wörter kommen immer schneller, bis dein Posteingang überläuft. Gezählt wird, wie lange du durchhältst.
+          Deine Bestzeit steht unten in der Kachel <b>Rekord</b>. Sobald du sie überholst, leuchtet sie auf. Mit <kbd>Esc</kbd> kannst du jederzeit aufhören, die Zeit zählt trotzdem.</dd>
         <dt>Deutsch lernen / Englisch lernen</dt><dd>Du tippst Wörter in der Lernsprache. Die Übersetzung steht klein rechts daneben, so lernst du Vokabeln nebenbei.
-          Du wählst zwischen <b>Battle Royale</b> (mit Gegnern) und <b>In Ruhe</b> (ohne Gegner, ohne Müll, gemächliches Tempo; mit <kbd>Esc</kbd> beendest du die Runde und bekommst die Auswertung).</dd>
+          Du wählst zwischen <b>Battle Royale</b> (mit Gegnern), <b>Endlos</b> und <b>In Ruhe</b> (ohne Gegner, ohne Müll, gemächliches Tempo; mit <kbd>Esc</kbd> beendest du die Runde und bekommst die Auswertung).</dd>
         <dt>Thema</dt><dd>Weltraum, Küche, Natur, Technik, Sport, Musik, Reisen oder Tiere. <b>Gemischt</b> nimmt alle, <b>Zufall</b> wählt eines aus.</dd>
         <dt>Seed</dt><dd>Startzahl für den Zufall. Gleicher Seed = gleiche Wörter in derselben Reihenfolge. Leer lassen für eine neue, zufällige Runde.</dd>
+        <dt>Mehrspieler</dt><dd>Im Menü unter <b>Mehrspieler</b> einen <b>Raum erstellen</b> und den 4-stelligen Code (oder den Einladungslink) weitergeben.
+          Die anderen treten mit dem Code bei. Der Gastgeber wählt Sprache, Thema und Zahl der Bots und startet die Runde – Bots füllen bis ${DEFAULT_BOT_FIELD.count + 1} Spieler auf.
+          Die Runde läuft für alle weiter, Pausieren geht nicht. Bricht deine Verbindung ab, verbindet sich das Spiel automatisch neu und du steigst wieder ein. Nach deinem K.O. kannst du zuschauen. Die Auswertung kommt, wenn die Runde vorbei ist, danach geht es zurück in die Lobby.</dd>
       </dl>
     </section>
 

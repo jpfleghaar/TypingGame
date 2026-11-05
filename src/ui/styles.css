@@ -537,3 +537,26 @@ tr.ko-me td:nth-child(2)::after { content: ' ✝'; color: var(--danger); }
   content: '➜'; margin-left: 0.6em; font-size: 0.7em; color: var(--send); opacity: 0.85;
 }
 .row.garbage.to-send::before { color: var(--send); }
+
+/* ---------- Mehrspieler ---------- */
+.room-code { letter-spacing: 0.25em; color: var(--send); }
+.lobby-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.lobby-players li { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.lobby-players .tag { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.55rem; opacity: 0.85; }
+.lobby-players .tag.host { border-color: var(--send); color: var(--send); }
+.lobby-error { color: var(--danger); margin: 0.6rem 0 0; }
+.code-input { width: 6.5rem; text-transform: uppercase; letter-spacing: 0.2em; text-align: center; }
+.lobby input[type='range'] { width: min(16rem, 60vw); }
+.invite-link { user-select: all; word-break: break-all; color: var(--text); }
+.net-banner {
+  position: fixed; top: calc(env(safe-area-inset-top, 0px) + 0.75rem); left: 50%; transform: translateX(-50%); z-index: 60;
+  background: var(--panel); border: 1px solid var(--danger); color: var(--text);
+  padding: 0.5rem 1rem; border-radius: 999px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.lobby-players .tag.offline { border-color: var(--danger); color: var(--danger); }
+
+/* ---------- Endlos-Modus ---------- */
+.hud .record-stat.beaten { border-color: var(--send); box-shadow: 0 0 12px rgba(var(--send-rgb), 0.45); }
+.hud .record-stat.beaten b, .hud .record-stat.beaten small { color: var(--send); }
+.record-line { margin: 0.2rem 0 0.4rem; font-size: 1.05rem; }
+.record-line.new { color: var(--send); font-weight: 700; }

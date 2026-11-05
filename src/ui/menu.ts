@@ -2,7 +2,8 @@ import { DEFAULT_CONFIG, THEME_MIXED, THEME_RANDOM } from '../core';
 import { DEFAULT_BOT_FIELD } from '../controllers/botProfiles';
 import { VOCAB, WORD_DATA, type Language, type SessionSettings } from '../runtime/session';
 import type { AvSettings } from './avSettings';
-import { el, pointRatesText, pointsLabel } from './labels';
+import { loadRecord, recordKey } from './endlessRecords';
+import { el, formatTime, pointRatesText, pointsLabel } from './labels';
 import { systemPrefersReducedMotion } from './motion';
 
 const PREFS_KEY = 'typing-royale.prefs.v1';
@@ -15,16 +16,20 @@ interface Prefs {
   language: LanguageChoice;
   theme: string;
   playerName: string;
-  /** Lernmodus: mit Gegnern (royale) oder in Ruhe (calm). */
-  learnMode: 'royale' | 'calm';
+  /** Alt (vor dem Endlos-Modus): Lernmodus mit Gegnern oder in Ruhe. */
+  learnMode?: 'royale' | 'calm';
+  /** Gewählter Modus; "In Ruhe" gibt es nur beim Lernen. */
+  mode?: MenuMode;
 }
 
+type MenuMode = 'royale' | 'endless' | 'calm';
+
 /** Sprache, in der tatsächlich getippt wird. */
-function typingLanguage(c: LanguageChoice): Language {
+export function typingLanguage(c: LanguageChoice): Language {
   return c === 'learn-de' ? 'de' : c === 'learn-en' ? 'en' : c;
 }
 
-function isLearn(c: LanguageChoice): boolean {
+export function isLearn(c: LanguageChoice): boolean {
   return c === 'learn-de' || c === 'learn-en';
 }
 
@@ -35,6 +40,11 @@ function loadPrefs(): Prefs {
   } catch {
     return fallback;
   }
+}
+
+/** Gespeicherter Spielername (z. B. für Einladungslinks). */
+export function savedPlayerName(): string {
+  return loadPrefs().playerName;
 }
 
 function savePrefs(p: Prefs): void {
@@ -49,7 +59,7 @@ export function randomSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
 }
 
-function segmented<T extends string>(options: [T, string][], value: T, onChange: (v: T) => void): HTMLElement {
+export function segmented<T extends string>(options: [T, string][], value: T, onChange: (v: T) => void): HTMLElement {
   const wrap = el('div', 'seg');
   wrap.setAttribute('role', 'group');
   const buttons = options.map(([v, label]) => {
@@ -118,11 +128,20 @@ export function renderAvControls(av: AvHooks): HTMLElement {
   return wrap;
 }
 
+/** Mehrspieler im Menü: Raum erstellen oder per Code beitreten. */
+export interface MultiHooks {
+  create: (name: string) => void;
+  join: (code: string, name: string) => void;
+  /** Letzte Fehlermeldung (z. B. Server nicht erreichbar). */
+  error?: string;
+}
+
 export function renderMenu(
   root: HTMLElement,
   onStart: (s: SessionSettings) => void,
   av: AvHooks,
   onHelp: () => void,
+  multi?: MultiHooks,
 ): void {
   const prefs = loadPrefs();
   root.replaceChildren();
@@ -163,24 +182,29 @@ export function renderMenu(
   };
   renderThemes();
 
-  // Nur im Lernmodus: mit Gegnern oder in Ruhe
-  const learnLabel = el('span', undefined, 'Modus');
-  const learnMode = segmented<'royale' | 'calm'>(
-    [
+  // Modus: Battle Royale, Endlos – und beim Lernen zusätzlich "In Ruhe"
+  prefs.mode ??= prefs.learnMode === 'calm' ? 'calm' : 'royale';
+  const mode = (): MenuMode => (prefs.mode === 'calm' && !isLearn(prefs.language) ? 'royale' : (prefs.mode ?? 'royale'));
+  const modeHolder = el('div');
+  const renderModes = () => {
+    const opts: [MenuMode, string][] = [
       ['royale', 'Battle Royale'],
-      ['calm', 'In Ruhe (ohne Gegner)'],
-    ],
-    prefs.learnMode,
-    (v) => {
-      prefs.learnMode = v;
-      updateStartLabel();
-    },
-  );
+      ['endless', 'Endlos'],
+    ];
+    if (isLearn(prefs.language)) opts.push(['calm', 'In Ruhe (ohne Gegner)']);
+    modeHolder.replaceChildren(
+      segmented<MenuMode>(opts, mode(), (v) => {
+        prefs.mode = v;
+        updateStartLabel();
+      }),
+    );
+  };
   const learnInfo = el('p', 'keys learn-info');
   const learnSpacer = el('span');
   const updateLearnRow = () => {
     const learn = isLearn(prefs.language);
-    learnLabel.hidden = learnMode.hidden = learnInfo.hidden = learnSpacer.hidden = !learn;
+    learnInfo.hidden = learnSpacer.hidden = !learn;
+    renderModes();
     learnInfo.textContent =
       prefs.language === 'learn-de'
         ? 'Du tippst deutsche Wörter, die englische Übersetzung steht daneben.'
@@ -217,8 +241,8 @@ export function renderMenu(
     lang,
     learnSpacer,
     learnInfo,
-    learnLabel,
-    learnMode,
+    el('span', undefined, 'Modus'),
+    modeHolder,
     el('span', undefined, 'Thema'),
     themeHolder,
     seedLabel,
@@ -228,16 +252,20 @@ export function renderMenu(
   const start = el('button', 'btn primary', 'Runde starten');
   start.type = 'button';
   const startInfo = el('span', 'keys');
-  const calm = () => isLearn(prefs.language) && prefs.learnMode === 'calm';
   function updateStartLabel(): void {
-    startInfo.textContent = calm() ? 'Ohne Gegner · Esc beendet · Enter startet' : `${DEFAULT_BOTS} Gegner · Enter startet`;
+    const m = mode();
+    if (m === 'calm') startInfo.textContent = 'Ohne Gegner · Esc beendet · Enter startet';
+    else if (m === 'endless') {
+      const rec = loadRecord(recordKey(typingLanguage(prefs.language), isLearn(prefs.language)));
+      startInfo.textContent = `Allein, immer schneller · ${rec ? `Rekord ${formatTime(rec.ms)}` : 'noch kein Rekord'} · Enter startet`;
+    } else startInfo.textContent = `${DEFAULT_BOTS} Gegner · Enter startet`;
   }
   const go = () => {
     prefs.playerName = name.value.trim() || 'Du';
     savePrefs(prefs);
     const parsed = Number.parseInt(seed.value, 10);
     onStart({
-      mode: calm() ? 'calm' : 'royale',
+      mode: mode(),
       language: typingLanguage(prefs.language),
       learn: isLearn(prefs.language),
       theme: prefs.theme,
@@ -291,10 +319,55 @@ export function renderMenu(
   more.innerHTML = 'Alles im Detail – Strategien, Abzeichen, Finale – steht in der <b>Anleitung</b> oben.';
   help.append(intro, table, more);
 
+  /* --- Mehrspieler --- */
+  const multiCard = el('div', 'card');
+  if (multi) {
+    multiCard.append(el('h2', undefined, 'Mehrspieler'));
+    const playerName = () => {
+      prefs.playerName = name.value.trim() || 'Du';
+      savePrefs(prefs);
+      return prefs.playerName;
+    };
+    const create = el('button', 'btn primary', 'Raum erstellen');
+    create.type = 'button';
+    create.addEventListener('click', () => multi.create(playerName()));
+    const code = el('input');
+    code.id = 'room-code';
+    code.placeholder = 'Code';
+    code.maxLength = 4;
+    code.autocomplete = 'off';
+    code.className = 'code-input';
+    code.setAttribute('aria-label', 'Raum-Code');
+    const join = el('button', 'btn', 'Beitreten');
+    join.type = 'button';
+    const doJoin = () => {
+      if (code.value.trim().length > 0) multi.join(code.value.trim().toUpperCase(), playerName());
+      else code.focus();
+    };
+    join.addEventListener('click', doJoin);
+    code.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.stopPropagation();
+        doJoin();
+      }
+    });
+    const row = el('div', 'actions');
+    row.append(create, el('span', 'keys', 'oder'), code, join);
+    multiCard.append(
+      el('p', 'keys', 'Spielt gemeinsam in einer Runde – freie Plätze füllen Bots auf. Dein Name von oben wird verwendet.'),
+      row,
+    );
+    if (multi.error) {
+      const err = el('p', 'lobby-error', multi.error);
+      err.setAttribute('role', 'alert');
+      multiCard.append(err);
+    }
+  }
+
   const avCard = el('div', 'card');
   avCard.append(el('h2', undefined, 'Sound'), renderAvControls(av));
 
-  menu.append(head, setup, help, avCard);
+  menu.append(head, setup, ...(multi ? [multiCard] : []), help, avCard);
   root.append(menu);
 
   root.onkeydown = (e) => {

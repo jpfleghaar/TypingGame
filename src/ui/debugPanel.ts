@@ -15,6 +15,8 @@ export class DebugPanel {
     private readonly humanId: number,
     private readonly profiles: BotProfile[],
     private readonly seed: number,
+    /** Spieler-ID des ersten Bots (Mehrspieler: nach allen Menschen). */
+    private readonly firstBotId = 1,
   ) {
     this.root.hidden = true;
     document.body.append(this.root);
@@ -63,7 +65,7 @@ export class DebugPanel {
     const short: Record<string, string> = { random: 'Zuf', attackers: 'Angr', weakest: 'Schw', badges: 'Jäg', manual: 'Man' };
     const rows = this.profiles
       .map((prof, i) => {
-        const p = state.players[i + 1];
+        const p = state.players[i + this.firstBotId];
         const real = wpm(state, p);
         const target = p.targetId !== null ? state.players[p.targetId].name.slice(0, 6) : '–';
         const cls = p.alive ? '' : ' class="dead"';

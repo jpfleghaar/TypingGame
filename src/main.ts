@@ -9,8 +9,15 @@ import { PcbRenderer } from './fx/pcb/PcbRenderer';
 import { PCB_LAYOUT, pcbBoardSpec } from './fx/pcb/board';
 import type { ThemeRenderer } from './fx/ThemeRenderer';
 import { applyTheme, THEMES, type ThemeDef } from './theme/themes';
-import { pendingGarbage, ticksToMs } from './core';
+import { pendingGarbage, results, ticksToMs } from './core';
 import { DEFAULT_BOT_FIELD } from './controllers/botProfiles';
+import { LocalController } from './controllers/LocalController';
+import { createMatch } from './net/match';
+import { NetClient, NetFeed } from './net/NetClient';
+import type { ServerMsg } from './net/protocol';
+import { loadSeat, saveSeat } from './net/seat';
+import { GAME_VERSION } from './net/version';
+import { GameRunner } from './runtime/GameRunner';
 import { createSession, type Session, type SessionSettings } from './runtime/session';
 import { loadAv, saveAv, type AvSettings } from './ui/avSettings';
 import { runCountdown, type CountdownHandle } from './ui/countdown';
@@ -18,7 +25,9 @@ import { DebugPanel } from './ui/debugPanel';
 import { renderHelp } from './ui/helpView';
 import { GameView } from './ui/gameView';
 import { el } from './ui/labels';
-import { randomSeed, renderMenu } from './ui/menu';
+import { loadRecord, recordKey, submitRecord } from './ui/endlessRecords';
+import { renderLobby, type LobbyInfo } from './ui/lobbyView';
+import { randomSeed, renderMenu, savedPlayerName } from './ui/menu';
 import { motionReduced, onSystemMotionChange, setReducedFx } from './ui/motion';
 import { addProblemWords } from './ui/practiceStore';
 import { renderResults } from './ui/resultsView';
@@ -28,6 +37,7 @@ const screens = {
   game: document.getElementById('game')!,
   results: document.getElementById('results')!,
   help: document.getElementById('help')!,
+  lobby: document.getElementById('lobby')!,
 };
 
 type ScreenName = keyof typeof screens;
@@ -92,7 +102,7 @@ function toggleSound(): void {
   av.muted = audio.toggleMute();
   saveAv(av);
   view?.setAudioStatus(audioStatus());
-  if (current === 'menu') renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
+  if (current === 'menu') renderMainMenu();
 }
 
 function audioStatus(): string {
@@ -136,11 +146,11 @@ function showSpectateBar(s: Session): void {
   bar.setAttribute('role', 'region');
   bar.setAttribute('aria-label', 'Zuschauer-Modus');
   const results = el('button', 'btn primary', 'Zur Auswertung');
-  const menu = el('button', 'btn', 'Zurück zum Menü');
+  const menu = el('button', 'btn', s.net ? 'Raum verlassen' : 'Zurück zum Menü');
   results.type = menu.type = 'button';
   results.addEventListener('click', () => fastForward(s));
   menu.addEventListener('click', toMenu);
-  bar.append(el('span', 'spectate-label', 'Zuschauer-Modus'), results, menu);
+  bar.append(el('span', 'spectate-label', 'Zuschauer-Modus'), ...(s.net ? [] : [results]), menu);
   document.body.append(bar);
   spectateBar = bar;
 }
@@ -155,16 +165,202 @@ function teardown(): void {
   view = null;
 }
 
+function renderMainMenu(): void {
+  renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp, {
+    create: (name) => {
+      menuError = '';
+      net.send({ t: 'create', name, version: GAME_VERSION });
+    },
+    join: (code, name) => {
+      menuError = '';
+      net.send({ t: 'join', code, name, version: GAME_VERSION });
+    },
+    error: menuError,
+  });
+}
+
+/** Laufende Runde beenden (Schleife, Tastatur im Mehrspieler). */
+function endSession(s: Session): void {
+  s.runner.stop();
+  s.net?.local.dispose();
+}
+
 function toMenu(): void {
   closeConfirm(false);
   teardown();
-  session?.runner.stop();
+  if (session) endSession(session);
   session = null;
   closeOverlay();
   audio.stopMusic();
   fx.detach();
-  renderMenu(screens.menu, startGame, { settings: av, onChange: onAvChange }, showHelp);
+  if (lobbyInfo && net.connected) net.send({ t: 'leave' });
+  lobbyInfo = null;
+  saveSeat(null);
+  stopReconnect();
+  renderMainMenu();
   show('menu');
+}
+
+/* ---------- Mehrspieler ---------- */
+const net = new NetClient();
+/** Aktueller Raum (null = in keinem Raum). */
+let lobbyInfo: LobbyInfo | null = null;
+let lobbyError = '';
+let menuError = '';
+
+function showLobby(): void {
+  if (!lobbyInfo) return toMenu();
+  renderLobby(
+    screens.lobby,
+    lobbyInfo,
+    {
+      onSettings: (settings) => net.send({ t: 'settings', settings }),
+      onStart: () => net.send({ t: 'start' }),
+      onLeave: toMenu,
+    },
+    lobbyError,
+  );
+  show('lobby');
+}
+
+net.onMessage = (msg: ServerMsg) => {
+  switch (msg.t) {
+    case 'lobby':
+      lobbyInfo = msg;
+      lobbyError = '';
+      saveSeat({ code: msg.code, token: msg.token });
+      stopReconnect();
+      if (current === 'menu' || current === 'lobby') showLobby();
+      return;
+    case 'outdated':
+      showOutdated();
+      return;
+    case 'error':
+      if (msg.gone) {
+        // Platz weg (Server neu gestartet o. ä.) – zurück ins Menü
+        stopReconnect();
+        lobbyInfo = null;
+        saveSeat(null);
+        menuError = msg.msg;
+        if (current !== 'results') toMenu();
+        return;
+      }
+      if (current === 'lobby') {
+        lobbyError = msg.msg;
+        showLobby();
+      } else {
+        menuError = msg.msg;
+        if (current === 'menu') renderMainMenu();
+      }
+      return;
+    case 'start':
+      // Wieder-Einstieg in die Runde, die hier noch läuft: nur der Spielstand kommt neu
+      if (msg.resume && session?.net && session.settings.seed === msg.setup.seed && session.humanId === msg.you) return;
+      startNetGame(msg);
+      return;
+    case 'ticks':
+      session?.net?.feed.push(msg);
+      return;
+    case 'snapshot':
+      if (session?.net) session.net.feed.applySnapshot(session.runner.state, msg.state);
+      return;
+  }
+};
+
+/* --- Verbindungsabbruch: automatisch auf den eigenen Platz zurück --- */
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 3000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000];
+let reconnectTry = -1;
+let reconnectTimer = 0;
+let netBanner: HTMLElement | null = null;
+
+function setNetBanner(text: string | null): void {
+  if (!text) {
+    netBanner?.remove();
+    netBanner = null;
+    return;
+  }
+  if (!netBanner) {
+    netBanner = el('div', 'net-banner');
+    netBanner.setAttribute('role', 'status');
+    document.body.append(netBanner);
+  }
+  netBanner.textContent = text;
+}
+
+function stopReconnect(): void {
+  reconnectTry = -1;
+  clearTimeout(reconnectTimer);
+  setNetBanner(null);
+}
+
+function rejoin(): void {
+  const seat = loadSeat();
+  if (seat) net.send({ t: 'rejoin', code: seat.code, token: seat.token, version: GAME_VERSION });
+}
+
+net.onClose = (reason) => {
+  const seat = loadSeat();
+  const inRoom = lobbyInfo !== null || session?.net !== undefined || reconnectTry >= 0;
+  if (seat && inRoom && reconnectTry < RECONNECT_DELAYS_MS.length - 1) {
+    reconnectTry++;
+    setNetBanner('Verbindung unterbrochen – verbinde neu …');
+    reconnectTimer = window.setTimeout(rejoin, RECONNECT_DELAYS_MS[reconnectTry]);
+    return;
+  }
+  stopReconnect();
+  lobbyInfo = null;
+  saveSeat(null);
+  menuError = reason;
+  if (inRoom || current === 'menu') toMenu();
+};
+
+/** Seite ist älter als der Server: neu laden, sonst würden die Spielstände auseinanderlaufen. */
+function showOutdated(): void {
+  stopReconnect();
+  saveSeat(null);
+  closeOverlay();
+  overlay = el('div', 'overlay');
+  const card = el('div', 'card');
+  card.setAttribute('role', 'alertdialog');
+  card.setAttribute('aria-modal', 'true');
+  const reload = el('button', 'btn primary', 'Seite neu laden');
+  reload.type = 'button';
+  reload.addEventListener('click', () => location.reload());
+  const actions = el('div', 'actions');
+  actions.append(reload);
+  card.append(
+    el('h2', undefined, 'Neue Version verfügbar'),
+    el('p', 'keys', 'Das Spiel wurde aktualisiert. Lade die Seite neu, um mitzuspielen.'),
+    actions,
+  );
+  overlay.append(card);
+  document.body.append(overlay);
+  reload.focus();
+}
+
+function startNetGame(msg: Extract<ServerMsg, { t: 'start' }>): void {
+  const setup = msg.setup;
+  const match = createMatch(setup);
+  const feed = new NetFeed(() => net.send({ t: 'resync' }), msg.you);
+  const s: Session = {
+    settings: {
+      mode: 'royale',
+      language: setup.language,
+      learn: setup.learn,
+      theme: setup.theme,
+      seed: setup.seed,
+      botCount: match.botProfiles.length,
+      playerName: setup.humans[msg.you],
+    },
+    runner: new GameRunner(match.state, match.bank, [feed], feed),
+    humanId: msg.you,
+    bank: match.bank,
+    themeLabel: match.themeLabel,
+    botProfiles: match.botProfiles,
+    firstBotId: setup.humans.length,
+    net: { feed, local: new LocalController(msg.you) },
+  };
+  runSession(s, Math.round(msg.countdownMs / 1000));
 }
 
 function showHelp(): void {
@@ -174,11 +370,16 @@ function showHelp(): void {
 }
 
 function startGame(settings: SessionSettings): void {
-  session?.runner.stop();
+  runSession(createSession(settings));
+}
+
+function runSession(s: Session, countdownSeconds = s.runner.state.config.countdownSeconds): void {
+  if (session) endSession(session);
+  closeConfirm(false);
   closeOverlay();
   teardown();
-  const s = createSession(settings);
   session = s;
+  const settings = s.settings;
   // Platine (WebGL): feste Spielfläche auf dem Hintergrundbild, solange die Gegner auf P1–P10 passen
   const opponents = s.runner.state.players.length - 1;
   const onBoard = fx.kind === 'pcb' && opponents <= PCB_LAYOUT.pads.length;
@@ -186,6 +387,9 @@ function startGame(settings: SessionSettings): void {
     layout: onBoard ? 'board' : av.layout,
     board: onBoard ? pcbBoardSpec() : undefined,
     svgLinks: theme.renderer === 'classic',
+    pendingKeys: s.net ? () => s.net!.feed.pendingKeys : undefined,
+    recordMs:
+      settings.mode === 'endless' ? (loadRecord(recordKey(settings.language, !!settings.learn))?.ms ?? 0) : undefined,
     nodeLabels: theme.texts.nodeLabels,
     texts: theme.texts.ui,
     onToggleMute: toggleSound,
@@ -203,7 +407,7 @@ function startGame(settings: SessionSettings): void {
     },
   });
   view = v;
-  const dbg = new DebugPanel(s.humanId, s.botProfiles, settings.seed);
+  const dbg = new DebugPanel(s.humanId, s.botProfiles, settings.seed, s.firstBotId ?? 1);
   if (debugWanted) dbg.toggle();
   debug = dbg;
   const bridge = fx;
@@ -223,6 +427,14 @@ function startGame(settings: SessionSettings): void {
     }
   });
   s.runner.onFrame((state, info) => {
+    // Mehrspieler: eigene Tasten an den Server – wirksam erst, wenn sie im Tick-Paket zurückkommen
+    if (s.net) {
+      const cmds = s.net.local.poll(state);
+      if (cmds.length > 0) {
+        net.send({ t: 'cmd', cmds });
+        s.net.feed.sent(cmds);
+      }
+    }
     v.update(state, info);
     bridge.frame(state);
     const me = state.players[s.humanId];
@@ -241,15 +453,18 @@ function startGame(settings: SessionSettings): void {
   const hint =
     settings.mode === 'royale'
       ? `Tippe immer das unterste Wort ${ui.sep} ${k('Tab')} ${ui.brackets ? ui.tabLabel : 'wechselt die Ziel-Strategie'}`
-      : `Tippe immer das unterste Wort ${ui.sep} ${k('Esc')} beendet die Runde`;
+      : settings.mode === 'endless'
+        ? `Die Wörter kommen immer schneller – wie lange hältst du durch? ${ui.sep} ${k('Esc')} beendet`
+        : `Tippe immer das unterste Wort ${ui.sep} ${k('Esc')} beendet die Runde`;
   countdown = runCountdown(
-    s.runner.state.config.countdownSeconds,
+    countdownSeconds,
     hint,
     (n) => audio.countdownBeep(n),
     () => {
       countdown = null;
       if (session !== s) return;
       audio.startMusic();
+      s.net?.local.reset();
       s.runner.start();
     },
   );
@@ -275,13 +490,14 @@ function requestQuit(): void {
     return;
   }
   if (confirmBox) return;
-  s.runner.pause();
+  const online = s.net !== undefined;
+  if (!online) s.runner.pause(); // Mehrspieler läuft für die anderen weiter
   const royale = s.settings.mode === 'royale';
   confirmBox = el('div', 'overlay confirm');
   const card = el('div', 'card');
   card.setAttribute('role', 'alertdialog');
   card.setAttribute('aria-modal', 'true');
-  const quit = el('button', 'btn danger', royale ? 'Aufgeben' : 'Runde beenden');
+  const quit = el('button', 'btn danger', online ? 'Raum verlassen' : royale ? 'Aufgeben' : 'Runde beenden');
   const stay = el('button', 'btn primary', 'Weiterspielen');
   quit.type = stay.type = 'button';
   quit.addEventListener('click', () => {
@@ -293,13 +509,15 @@ function requestQuit(): void {
   const actions = el('div', 'actions');
   actions.append(stay, quit);
   card.append(
-    el('h2', undefined, royale ? 'Wirklich aufgeben?' : 'Runde beenden?'),
+    el('h2', undefined, online ? 'Raum verlassen?' : royale ? 'Wirklich aufgeben?' : 'Runde beenden?'),
     el(
       'p',
       'keys',
-      royale
-        ? 'Die Runde wird abgebrochen und nicht gewertet. Das Spiel ist pausiert.'
-        : 'Du bekommst danach die Auswertung dieser Runde. Das Spiel ist pausiert.',
+      online
+        ? 'Achtung: Das Spiel läuft weiter, solange du überlegst. Verlässt du den Raum, tippst du in dieser Runde nicht mehr mit.'
+        : royale
+          ? 'Die Runde wird abgebrochen und nicht gewertet. Das Spiel ist pausiert.'
+          : 'Du bekommst danach die Auswertung dieser Runde. Das Spiel ist pausiert.',
     ),
     actions,
   );
@@ -322,11 +540,19 @@ function showKoOverlay(s: Session, placement: number): void {
   skip.addEventListener('click', () => fastForward(s));
   menu.addEventListener('click', toMenu);
   const actions = el('div', 'actions');
-  actions.append(skip, watch, menu);
-  card.append(el('h2', undefined, theme.texts.koSelf), el('p', 'keys', `Du bist auf Platz ${placement} gelandet.`), actions);
+  if (s.net) {
+    // Mehrspieler: Die Runde gehört allen – Auswertung erst, wenn sie vorbei ist.
+    menu.textContent = 'Raum verlassen';
+    watch.classList.add('primary');
+    actions.append(watch, menu);
+  } else actions.append(skip, watch, menu);
+  const text = s.net
+    ? `Du bist auf Platz ${placement} gelandet. Die Auswertung kommt, sobald die Runde vorbei ist.`
+    : `Du bist auf Platz ${placement} gelandet.`;
+  card.append(el('h2', undefined, theme.texts.koSelf), el('p', 'keys', text), actions);
   overlay.append(card);
   document.body.append(overlay);
-  skip.focus();
+  (s.net ? watch : skip).focus();
 }
 
 /** Spielt den Rest der Runde ohne Darstellung zu Ende (nur Bots übrig). */
@@ -339,26 +565,48 @@ function fastForward(s: Session): void {
 
 function finish(s: Session): void {
   if (session !== s) return;
-  s.runner.stop();
+  endSession(s);
   closeOverlay();
   teardown();
   audio.stopMusic();
   fx.detach();
   session = null;
   const settings = s.settings;
+  // Endlos: Bestzeit speichern (gilt auch, wenn die Runde mit Esc beendet wurde)
+  let endless: { previousMs: number; isNew: boolean } | undefined;
+  if (settings.mode === 'endless') {
+    const me = s.runner.state.players[s.humanId];
+    const r = results(s.runner.state).find((x) => x.id === s.humanId)!;
+    const { previous, isNew } = submitRecord(recordKey(settings.language, !!settings.learn), {
+      ms: r.survivedMs,
+      wpm: Math.round(r.wpm),
+      words: me.stats.wordsCleared,
+      date: new Date().toISOString(),
+    });
+    endless = { previousMs: previous?.ms ?? 0, isNew };
+  }
   const problems = renderResults(
     screens.results,
     s.runner.state,
     s.humanId,
-    { seed: settings.seed, themeLabel: s.themeLabel, practice: settings.mode !== 'royale', mode: settings.mode },
     {
-      again: () => startGame({ ...settings, seed: randomSeed() }),
-      replaySeed: () => startGame(settings),
-      menu: toMenu,
+      seed: settings.seed,
+      themeLabel: s.themeLabel,
+      practice: settings.mode !== 'royale',
+      mode: settings.mode,
+      multiplayer: s.net !== undefined,
+      endless,
     },
+    s.net
+      ? { again: showLobby, replaySeed: showLobby, menu: toMenu }
+      : {
+          again: () => startGame({ ...settings, seed: randomSeed() }),
+          replaySeed: () => startGame(settings),
+          menu: toMenu,
+        },
   );
   addProblemWords(settings.language, problems);
-  lastSettings = settings;
+  lastSettings = s.net ? null : settings;
   show('results');
 }
 
@@ -383,9 +631,11 @@ window.addEventListener('keydown', (e) => {
     }
     if (overlay) closeOverlay();
     if (current === 'game' && session) requestQuit();
+    else if (current === 'results' && lobbyInfo) showLobby();
     else if (current === 'results' || current === 'help') toMenu();
-  } else if (e.key === 'Enter' && current === 'results' && lastSettings && document.activeElement === document.body) {
-    startGame({ ...lastSettings, seed: randomSeed() });
+  } else if (e.key === 'Enter' && current === 'results' && document.activeElement === document.body) {
+    if (lobbyInfo) showLobby();
+    else if (lastSettings) startGame({ ...lastSettings, seed: randomSeed() });
   }
 });
 
@@ -393,15 +643,20 @@ toMenu();
 applyThemeChoice();
 
 // Entwickler-Abkürzungen: ?autostart[=seed] startet sofort eine Runde, &debug zeigt die Debug-Anzeige,
-// &learn=de|en startet im Lernmodus, ?help öffnet die Anleitung.
+// &learn=de|en startet im Lernmodus, &mode=endless im Endlos-Modus, ?help öffnet die Anleitung.
 const params = new URLSearchParams(location.search);
 const auto = params.get('autostart');
 debugWanted = params.has('debug');
 const learnParam = params.get('learn');
 if (params.has('help')) showHelp();
+// Neu geladen? Dann zurück auf den eigenen Platz. Sonst: Einladungslink ?raum=CODE tritt direkt bei.
+const invite = params.get('raum')?.toUpperCase();
+const seat = loadSeat();
+if (seat && (!invite || invite === seat.code)) rejoin();
+else if (invite) net.send({ t: 'join', code: invite, name: savedPlayerName(), version: GAME_VERSION });
 if (auto !== null) {
   startGame({
-    mode: 'royale',
+    mode: params.get('mode') === 'endless' ? 'endless' : 'royale',
     learn: learnParam === 'de' || learnParam === 'en',
     language: learnParam === 'en' ? 'en' : 'de',
     theme: 'mixed',

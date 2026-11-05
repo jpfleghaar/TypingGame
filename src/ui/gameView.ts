@@ -41,6 +41,10 @@ export interface StageTransform {
 }
 
 export interface ViewOptions {
+  /** Endlos-Modus: bisheriger Rekord in ms (0 = noch keiner). Zeigt statt des Themas eine Rekord-Kachel. */
+  recordMs?: number;
+  /** Mehrspieler: eigene Tasten, die schon getippt, aber noch nicht vom Server bestätigt sind. */
+  pendingKeys?: () => readonly string[];
   /** 'center': Gegner links und rechts; 'split': Wörter links, alle Gegner rechts; 'board': feste Spielfläche. */
   layout?: 'center' | 'split' | 'board';
   /** Nur bei layout 'board'. */
@@ -85,6 +89,7 @@ export class GameView {
     alive: el('b'),
     time: el('b'),
   };
+  private recordStat: HTMLElement | null = null;
   private targetEl = el('strong');
   private badgesEl = el('strong');
   private rows = new Map<number, HTMLElement>();
@@ -161,13 +166,13 @@ export class GameView {
       hud.classList.add('with-points');
       hud.append(pointsStat);
     }
-    hud.append(
-      comboStat,
-      stat('WPM', this.hud.wpm),
-      stat(others.length ? 'Im Spiel' : 'Thema', this.hud.alive),
-      stat('Zeit', this.hud.time),
-    );
-    if (!others.length) this.hud.alive.textContent = themeLabel;
+    const endless = options.recordMs !== undefined;
+    const thirdStat = stat(others.length ? 'Im Spiel' : endless ? 'Rekord' : 'Thema', this.hud.alive, endless ? 'record-stat' : '');
+    hud.append(comboStat, stat('WPM', this.hud.wpm), thirdStat, stat('Zeit', this.hud.time));
+    if (endless) {
+      this.recordStat = thirdStat;
+      this.hud.alive.textContent = options.recordMs ? formatTime(options.recordMs) : '–';
+    } else if (!others.length) this.hud.alive.textContent = themeLabel;
 
     const targetLine = el('div', 'target-line');
     const t = el('span');
@@ -185,6 +190,11 @@ export class GameView {
     warnWrap.style.display = 'grid';
     warnWrap.append(warn, this.warnCount);
     board.append(warnWrap, this.stackEl);
+    // Ohne Gegner gibt es weder Müll noch Ziele – Platz bleibt, damit das Layout gleich aussieht.
+    if (others.length === 0) {
+      warnWrap.style.visibility = 'hidden';
+      targetLine.style.visibility = 'hidden';
+    }
     // Punkte-Leiste nur, wenn es Gegner gibt (ohne Gegner gibt es nichts anzugreifen/abzuwehren)
     if (others.length > 0) {
       board.classList.add('with-points');
@@ -204,7 +214,8 @@ export class GameView {
       options.onToggleMute?.();
       tone.blur();
     });
-    hint.append(`${tx.modeLabel}: ${themeLabel}`, sep(), key('Tab'), ` ${tx.tabLabel}`, sep());
+    hint.append(`${tx.modeLabel}: ${themeLabel}`, sep());
+    if (others.length > 0) hint.append(key('Tab'), ` ${tx.tabLabel}`, sep());
     if (others.length > 0) hint.append(key('Enter'), ' Senden', sep());
     if (others.length > 0) hint.append(key(others.length >= 10 ? '1–0' : `1–${others.length}`), ' Direkt', sep());
     // "Menü" anklickbar (fragt im Spiel nach, ob man aufgeben will) – wie Esc
@@ -531,17 +542,25 @@ export class GameView {
       this.stackEl.append(frag);
     }
     const active = me.stack[0];
-    if (active && (active.id !== this.activeId || me.cursor !== this.activeCursor)) {
+    // Mehrspieler: schon getippte, noch nicht bestätigte Buchstaben vorab anzeigen
+    let cursor = me.cursor;
+    if (active && me.alive && this.options.pendingKeys) {
+      for (const k of this.options.pendingKeys()) {
+        if (active.text[cursor] !== k) break;
+        cursor++;
+      }
+    }
+    if (active && (active.id !== this.activeId || cursor !== this.activeCursor)) {
       if (active.id !== this.activeId) this.activate(active);
       const row = this.rows.get(active.id)!;
       const chars = row.children;
       for (let i = 0; i < active.text.length; i++) {
         const c = chars[i] as HTMLElement;
-        c.classList.toggle('done', i < me.cursor);
-        c.classList.toggle('cur', i === me.cursor);
-        if (i !== me.cursor) c.classList.remove('err');
+        c.classList.toggle('done', i < cursor);
+        c.classList.toggle('cur', i === cursor);
+        if (i !== cursor) c.classList.remove('err');
       }
-      this.activeCursor = me.cursor;
+      this.activeCursor = cursor;
     }
     this.stackEl.classList.toggle('danger', me.stack.length >= state.config.stackMax - 2);
     // Markiert: Wörter, die ein Angriff mit Enter jetzt mitnehmen würde
@@ -655,7 +674,15 @@ export class GameView {
     if (state.players.length > 1) {
       this.hud.alive.textContent = `${state.players.filter((p) => p.alive).length}/${state.players.length}`;
     }
-    this.hud.time.textContent = formatTime(ticksToMs(state.tick, state.config));
+    const elapsed = ticksToMs(state.tick, state.config);
+    this.hud.time.textContent = formatTime(elapsed);
+    // Endlos: Sobald der alte Rekord geschlagen ist, zeigt die Kachel die neue Bestzeit.
+    const rec = this.options.recordMs;
+    if (this.recordStat && rec !== undefined && rec > 0 && elapsed > rec && !this.recordStat.classList.contains('beaten')) {
+      this.recordStat.classList.add('beaten');
+      this.recordStat.querySelector('small')!.textContent = 'Neuer Rekord!';
+    }
+    if (this.recordStat?.classList.contains('beaten')) this.hud.alive.textContent = formatTime(elapsed);
     this.targetEl.textContent = me.targetId !== null ? state.players[me.targetId].name : '–';
     this.badgesEl.textContent = String(me.badges);
   }

@@ -11,7 +11,15 @@ export function renderResults(
   root: HTMLElement,
   state: GameState,
   humanId: number,
-  info: { seed: number; themeLabel: string; practice: boolean; mode?: string },
+  info: {
+    seed: number;
+    themeLabel: string;
+    practice: boolean;
+    mode?: string;
+    multiplayer?: boolean;
+    /** Endlos-Modus: alter Rekord (ms, 0 = keiner) und ob dieser Lauf ihn geschlagen hat. */
+    endless?: { previousMs: number; isNew: boolean };
+  },
   actions: ResultsActions,
 ): ProblemWord[] {
   root.replaceChildren();
@@ -21,7 +29,10 @@ export function renderResults(
   const mine = res.find((r) => r.id === humanId)!;
 
   const h1 = el('h1');
-  if (info.practice) h1.append(info.mode === 'calm' ? 'Runde beendet' : 'Übung beendet');
+  const endlessInfo = info.endless;
+  if (endlessInfo) {
+    h1.append('Durchgehalten: ', el('span', 'place', formatTime(mine.survivedMs)));
+  } else if (info.practice) h1.append(info.mode === 'calm' ? 'Runde beendet' : 'Übung beendet');
   else if (mine.placement === 1) h1.append(el('span', 'place', 'Sieg! '), 'Platz 1');
   else h1.append('Platz ', el('span', 'place', String(mine.placement)), ` von ${state.players.length}`);
   const sub = el(
@@ -30,6 +41,18 @@ export function renderResults(
     `${mine.wpm.toFixed(0)} WPM · ${(mine.accuracy * 100).toFixed(1)} % Genauigkeit · ` +
       `überlebt ${formatTime(mine.survivedMs)} · Thema ${info.themeLabel} · Seed ${info.seed}`,
   );
+
+  // Endlos: Rekord-Vergleich direkt unter der Überschrift
+  const recordLine = el('p', 'record-line');
+  if (endlessInfo) {
+    const prev = endlessInfo.previousMs;
+    if (endlessInfo.isNew) {
+      recordLine.classList.add('new');
+      recordLine.textContent = prev > 0 ? `Neuer Rekord! Vorher: ${formatTime(prev)}` : 'Erster Rekord gesetzt!';
+    } else {
+      recordLine.textContent = `Rekord: ${formatTime(prev)} – dir fehlen noch ${formatTime(prev - mine.survivedMs)}`;
+    }
+  }
 
   const tableCard = el('div', 'card');
   if (!info.practice) {
@@ -84,14 +107,24 @@ export function renderResults(
   }
 
   const act = el('div', 'actions');
-  const again = el('button', 'btn primary', info.mode === 'practice' ? 'Nochmal üben' : 'Neue Runde');
+  const mp = info.multiplayer === true;
+  const again = el(
+    'button',
+    'btn primary',
+    mp ? 'Zurück in die Lobby' : info.mode === 'practice' ? 'Nochmal üben' : endlessInfo ? 'Nochmal' : 'Neue Runde',
+  );
   const same = el('button', 'btn', 'Gleicher Seed');
-  const menu = el('button', 'btn', 'Zurück zum Menü');
+  const menu = el('button', 'btn', mp ? 'Raum verlassen' : 'Zurück zum Menü');
   for (const b of [again, same, menu]) b.type = 'button';
   again.addEventListener('click', actions.again);
   same.addEventListener('click', actions.replaySeed);
   menu.addEventListener('click', actions.menu);
-  act.append(again, ...(info.practice ? [] : [same]), menu, el('span', 'keys', 'Enter = Neue Runde · Esc = Menü'));
+  act.append(
+    again,
+    ...(info.practice || mp ? [] : [same]),
+    menu,
+    el('span', 'keys', mp ? 'Enter / Esc = Lobby' : 'Enter = Neue Runde · Esc = Menü'),
+  );
 
   // Deine Punkte-Bilanz auf einen Blick
   const pts = el('div', 'card points-summary');
@@ -111,7 +144,7 @@ export function renderResults(
   tile('verfallen (Maximum voll)', mine.pointsLost, mine.pointsLost > 0 ? 'lost' : '');
   pts.append(grid);
 
-  wrap.append(h1, sub, act, pts, ...(info.practice ? [] : [tableCard]), probCard);
+  wrap.append(h1, ...(endlessInfo ? [recordLine] : []), sub, act, pts, ...(info.practice ? [] : [tableCard]), probCard);
   root.append(wrap);
   root.onkeydown = null;
   again.focus();
